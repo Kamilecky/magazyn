@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<style>
+  body { font-family: Arial, sans-serif; font-size: 11pt; color: #222; margin: 30px; }
+  h1 { font-size: 16pt; border-bottom: 2px solid #1F5C99; padding-bottom: 6px; color: #1F5C99; }
+  h2 { font-size: 13pt; color: #1F5C99; margin-top: 20px; }
+  .header { display: flex; justify-content: space-between; margin-bottom: 20px; }
+  .firma { font-size: 14pt; font-weight: bold; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th { background: #1F5C99; color: white; padding: 6px 8px; text-align: left; }
+  td { padding: 5px 8px; border-bottom: 1px solid #ddd; }
+  tr:nth-child(even) td { background: #f4f8ff; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 9pt; }
+  .badge-success { background: #198754; color: white; }
+  .badge-warning { background: #ffc107; color: #222; }
+  .badge-danger { background: #dc3545; color: white; }
+  .badge-secondary { background: #aaa; color: white; }
+  .alert { background: #fff3cd; border-left: 4px solid #ffc107; padding: 8px 12px; margin: 6px 0; }
+</style>
+</head>
+<body>
+<div class="header">
+  <div>
+    <div class="firma">&#9632; System Magazynowy</div>
+    <div style="color:#777; font-size:9pt">Karta rekruta</div>
+  </div>
+  <div style="text-align:right; color:#777; font-size:9pt">
+    Data wydruku: {{ data_wydruku|date:"d.m.Y H:i" }}
+  </div>
+</div>
+
+<h1>Karta rekruta: {{ rekrut }}</h1>
+
+<h2>Dane osobowe</h2>
+<table>
+  <tr><td><strong>Imię i nazwisko</strong></td><td>{{ rekrut }}</td></tr>
+  <tr><td><strong>Wiek</strong></td><td>{{ rekrut.wiek }} lat</td></tr>
+  <tr><td><strong>Data urodzenia</strong></td><td>{{ rekrut.data_urodzenia }}</td></tr>
+  <tr><td><strong>Data rekrutacji</strong></td><td>{{ rekrut.created_at|date:"d.m.Y" }}</td></tr>
+  <tr><td><strong>Aktualne stanowisko</strong></td>
+    <td>{% if aktualny %}{{ aktualny.stanowisko.nazwa }}{% else %}Brak przydziału{% endif %}</td>
+  </tr>
+</table>
+
+{% if ostrzezenia %}
+<h2>Ostrzeżenia</h2>
+{% for o in ostrzezenia %}
+<div class="alert">&#9888; {{ o }}</div>
+{% endfor %}
+{% endif %}
+
+<h2>Historia przydziałów (ostatnie 5)</h2>
+<table>
+  <thead>
+    <tr><th>Stanowisko</th><th>Data</th><th>Autor</th><th>Źródło</th><th>Status</th></tr>
+  </thead>
+  <tbody>
+    {% for p in historia %}
+    <tr>
+      <td>{{ p.stanowisko.nazwa }}</td>
+      <td>{{ p.data_przydzialu|date:"d.m.Y" }}</td>
+      <td>{{ p.autor.get_full_name|default:p.autor.username }}</td>
+      <td>{% if p.zrodlo == 'ai' %}AI{% else %}Ręcznie{% endif %}</td>
+      <td>{% if p.aktywny %}Aktywny{% else %}Nieaktywny{% endif %}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="5" style="text-align:center;color:#888">Brak historii przydziałów.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</body>
+</html>

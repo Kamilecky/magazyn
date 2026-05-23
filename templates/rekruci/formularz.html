@@ -1,0 +1,182 @@
+{% extends 'base.html' %}
+{% block title %}{% if rekrut %}Edytuj rekruta{% else %}Dodaj rekruta{% endif %}{% endblock %}
+{% block content %}
+<h4 class="mb-3">{% if rekrut %}Edytuj rekruta: {{ rekrut }}{% else %}Dodaj nowego rekruta{% endif %}</h4>
+<form method="post">
+  {% csrf_token %}
+
+  <!-- Karta 1: Dane osobowe -->
+  <div class="card mb-3">
+    <div class="card-header fw-bold"><i class="bi bi-person"></i> Dane osobowe</div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Imię *</label>
+          <input type="text" name="imie" class="form-control" required
+            value="{{ rekrut.imie|default:'' }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Nazwisko *</label>
+          <input type="text" name="nazwisko" class="form-control" required
+            value="{{ rekrut.nazwisko|default:'' }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Data urodzenia *</label>
+          <input type="date" name="data_urodzenia" class="form-control" required
+            value="{{ rekrut.data_urodzenia|default:'' }}">
+        </div>
+        <div class="col-12">
+          <label class="form-label">Uwagi</label>
+          <textarea name="uwagi" class="form-control" rows="2">{{ rekrut.uwagi|default:'' }}</textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Karta 2: Ankieta fizyczna -->
+  <div class="card mb-3">
+    <div class="card-header fw-bold"><i class="bi bi-activity"></i> Ankieta fizyczna</div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Maks. dźwiganie (kg)</label>
+          <select name="max_dzwiganie_kg" class="form-select">
+            {% with val=rekrut.ankieta.max_dzwiganie_kg|default:0 %}
+            <option value="0" {% if val == 0 %}selected{% endif %}>0 kg – brak</option>
+            <option value="10" {% if val == 10 %}selected{% endif %}>10 kg</option>
+            <option value="15" {% if val == 15 %}selected{% endif %}>15 kg</option>
+            <option value="25" {% if val == 25 %}selected{% endif %}>25 kg</option>
+            <option value="30" {% if val == 30 %}selected{% endif %}>30 kg</option>
+            {% endwith %}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Komfort stania (1–5)</label>
+          <input type="range" name="komfort_stania" class="form-range" min="1" max="5" step="1"
+            value="{{ rekrut.ankieta.komfort_stania|default:3 }}" id="rangeStanie"
+            oninput="document.getElementById('rangeStanieVal').textContent=this.value">
+          <div class="text-center">Wartość: <strong id="rangeStanieVal">{{ rekrut.ankieta.komfort_stania|default:3 }}</strong></div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Umiejętności komputerowe</label>
+          <select name="umiejetnosci_komputerowe" class="form-select">
+            {% with val=rekrut.ankieta.umiejetnosci_komputerowe|default:0 %}
+            <option value="0" {% if val == 0 %}selected{% endif %}>Brak</option>
+            <option value="1" {% if val == 1 %}selected{% endif %}>Podstawy</option>
+            <option value="2" {% if val == 2 %}selected{% endif %}>Swobodnie</option>
+            <option value="3" {% if val == 3 %}selected{% endif %}>Zaawansowany</option>
+            {% endwith %}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Tempo pracy</label>
+          <select name="tempo_pracy" class="form-select">
+            {% with val=rekrut.ankieta.tempo_pracy|default:'zrownowazone' %}
+            <option value="wolne" {% if val == 'wolne' %}selected{% endif %}>Wolne</option>
+            <option value="zrownowazone" {% if val == 'zrownowazone' %}selected{% endif %}>Zrównoważone</option>
+            <option value="szybkie" {% if val == 'szybkie' %}selected{% endif %}>Szybkie</option>
+            {% endwith %}
+          </select>
+        </div>
+        <div class="col-md-8">
+          <label class="form-label">Preferencje środowiska pracy</label>
+          <div class="row g-2">
+            <div class="col-6">
+              <div class="form-check">
+                <input type="checkbox" name="preferuje_ruch" class="form-check-input" id="pRuch"
+                  {% if rekrut.ankieta.preferuje_ruch %}checked{% endif %}>
+                <label class="form-check-label" for="pRuch">Preferuje ruch/chodzenie</label>
+              </div>
+              <div class="form-check">
+                <input type="checkbox" name="preferuje_stale_miejsce" class="form-check-input" id="pMiejsce"
+                  {% if rekrut.ankieta.preferuje_stale_miejsce %}checked{% endif %}>
+                <label class="form-check-label" for="pMiejsce">Preferuje stałe miejsce</label>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="form-check">
+                <input type="checkbox" name="preferuje_zespol" class="form-check-input" id="pZespol"
+                  {% if rekrut.ankieta.preferuje_zespol %}checked{% endif %}>
+                <label class="form-check-label" for="pZespol">Preferuje pracę w zespole</label>
+              </div>
+              <div class="form-check">
+                <input type="checkbox" name="preferuje_samodzielnie" class="form-check-input" id="pSamo"
+                  {% if rekrut.ankieta.preferuje_samodzielnie %}checked{% endif %}>
+                <label class="form-check-label" for="pSamo">Preferuje pracę samodzielną</label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Karta 3: Orzeczenie lekarskie -->
+  <div class="card mb-3">
+    <div class="card-header fw-bold"><i class="bi bi-clipboard2-pulse"></i> Orzeczenie lekarskie</div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Status zdrowotny</label>
+          <select name="orzeczenie_status" class="form-select">
+            <option value="">-- nie wypełniaj --</option>
+            {% with val=rekrut.orzeczenie.status|default:'' %}
+            <option value="zdolny" {% if val == 'zdolny' %}selected{% endif %}>Zdolny do pracy</option>
+            <option value="z_ograniczeniami" {% if val == 'z_ograniczeniami' %}selected{% endif %}>Zdolny z ograniczeniami</option>
+            <option value="niezdolny" {% if val == 'niezdolny' %}selected{% endif %}>Niezdolny do pracy</option>
+            {% endwith %}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Maks. dźwiganie wg orzeczenia (kg)</label>
+          <input type="number" name="orz_max_dzwiganie_kg" class="form-control" min="0" max="100"
+            placeholder="puste = brak ograniczeń"
+            value="{{ rekrut.orzeczenie.max_dzwiganie_kg|default:'' }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Maks. godz. przy monitorze/dzień</label>
+          <input type="number" name="zakaz_monitora_h" class="form-control" min="0" max="24"
+            placeholder="puste = brak ograniczeń"
+            value="{{ rekrut.orzeczenie.zakaz_monitora_h|default:'' }}">
+        </div>
+        <div class="col-md-4">
+          <div class="form-check">
+            <input type="checkbox" name="zakaz_stania" class="form-check-input" id="zStanie"
+              {% if rekrut.orzeczenie.zakaz_stania %}checked{% endif %}>
+            <label class="form-check-label" for="zStanie">Zakaz pracy stojącej</label>
+          </div>
+          <div class="form-check">
+            <input type="checkbox" name="zakaz_pochylania" class="form-check-input" id="zPochyl"
+              {% if rekrut.orzeczenie.zakaz_pochylania %}checked{% endif %}>
+            <label class="form-check-label" for="zPochyl">Zakaz pochylania</label>
+          </div>
+        </div>
+        <div class="col-md-8">
+          <label class="form-label">Inne ograniczenia</label>
+          <textarea name="inne_ograniczenia" class="form-control" rows="2">{{ rekrut.orzeczenie.inne_ograniczenia|default:'' }}</textarea>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Data badania</label>
+          <input type="date" name="data_badania" class="form-control"
+            value="{{ rekrut.orzeczenie.data_badania|default:'' }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Data ważności</label>
+          <input type="date" name="data_waznosci" class="form-control"
+            value="{{ rekrut.orzeczenie.data_waznosci|default:'' }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Lekarz</label>
+          <input type="text" name="lekarz" class="form-control"
+            value="{{ rekrut.orzeczenie.lekarz|default:'' }}">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="d-flex gap-2">
+    <button type="submit" class="btn btn-dark btn-lg"><i class="bi bi-floppy"></i> Zapisz i oblicz scoring</button>
+    <a href="{% url 'rekruci:lista' %}" class="btn btn-outline-secondary btn-lg">Anuluj</a>
+  </div>
+</form>
+{% endblock %}

@@ -1,0 +1,289 @@
+{% extends 'base.html' %}
+{% block title %}Lista rekrutów{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ---- Paski dopasowania ---- */
+.match-bar-wrap { background: #e9ecef; border-radius: 4px; height: 8px; margin-top: 4px; overflow: hidden; }
+.match-bar { height: 8px; border-radius: 4px; transition: width .4s ease; }
+.bar-green  { background: #198754; }
+.bar-blue   { background: #0d6efd; }
+.bar-yellow { background: #ffc107; }
+.bar-red    { background: #dc3545; }
+
+/* ---- Kafelki stanowisk ---- */
+.stanowisko-chip {
+  position: relative;
+  display: inline-block;
+  background: #f1f3f5;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  padding: 6px 10px;
+  margin: 3px 2px;
+  font-size: .82rem;
+  cursor: default;
+  vertical-align: top;
+  min-width: 130px;
+}
+.stanowisko-chip .chip-score {
+  font-weight: 700;
+  font-size: .9rem;
+}
+.stanowisko-chip.blokada { opacity: .55; border-color: #f5c6cb; background: #fff5f5; }
+
+/* ---- Tooltip ---- */
+.tip {
+  display: none;
+  position: fixed;
+  z-index: 9999;
+  background: #212529;
+  color: #f8f9fa;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: .8rem;
+  min-width: 220px;
+  max-width: 280px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.35);
+  pointer-events: none;
+  line-height: 1.5;
+}
+.tip table { width: 100%; border-collapse: collapse; }
+.tip td { padding: 1px 4px; }
+.tip td:first-child { color: #adb5bd; white-space: nowrap; }
+.stanowisko-chip:hover .tip { display: block; }
+
+/* ---- Karta rekruta ---- */
+.rekrut-card { transition: box-shadow .2s; }
+.rekrut-card:hover { box-shadow: 0 4px 18px rgba(0,0,0,.12); }
+
+/* ---- Pasek narzędzi (filtrowanie JS) ---- */
+#toolbar { background: #fff; border: 1px solid #dee2e6; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4><i class="bi bi-people"></i> Lista rekrutów</h4>
+  <a href="{% url 'rekruci:dodaj' %}" class="btn btn-dark"><i class="bi bi-person-plus"></i> Dodaj rekruta</a>
+</div>
+
+<!-- Pasek narzędzi: wyszukiwanie + sortowanie po stronie klienta -->
+<div id="toolbar" class="row g-2 align-items-end">
+  <div class="col-md-4">
+    <label class="form-label small mb-1 text-muted">Szukaj po imieniu/nazwisku</label>
+    <input type="text" id="jsSearch" class="form-control" placeholder="Wpisz nazwisko...">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label small mb-1 text-muted">Filtruj po przydziale</label>
+    <select id="jsFiltr" class="form-select">
+      <option value="wszyscy">Wszyscy rekruci</option>
+      <option value="bez_przydzialu" {% if filtr == 'bez_przydzialu' %}selected{% endif %}>Tylko bez przydziału</option>
+    </select>
+  </div>
+  <div class="col-md-3">
+    <label class="form-label small mb-1 text-muted">Sortuj</label>
+    <select id="jsSort" class="form-select">
+      <option value="nazwisko">Alfabetycznie (A–Z)</option>
+      <option value="score_desc">Najlepsze dopasowanie</option>
+      <option value="score_asc">Najgorsze dopasowanie</option>
+    </select>
+  </div>
+  <div class="col-md-2">
+    <button class="btn btn-outline-secondary w-100" onclick="resetFilters()">Resetuj</button>
+  </div>
+</div>
+
+<!-- Siatka kafelków -->
+<div id="kartyGrid" class="row g-3">
+  {% for karta in karty %}
+  <div class="col-12 col-md-6 col-xl-4 rekrut-col"
+       data-nazwisko="{{ karta.rekrut.nazwisko|lower }}"
+       data-imie="{{ karta.rekrut.imie|lower }}"
+       data-top-score="{{ karta.top_score }}"
+       data-ma-przydzia="{% if karta.aktywny_przydzia %}tak{% else %}nie{% endif %}">
+    <div class="card rekrut-card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center py-2">
+        <span class="fw-bold">{{ karta.rekrut.nazwisko }} {{ karta.rekrut.imie }}</span>
+        <span class="text-muted small">{{ karta.rekrut.wiek }} lat</span>
+      </div>
+      <div class="card-body pb-2">
+
+        <!-- Orzeczenie i przydział -->
+        <div class="mb-2 d-flex gap-2 flex-wrap">
+          {% if karta.rekrut.orzeczenie %}
+            {% with s=karta.rekrut.orzeczenie.status %}
+            {% if s == 'zdolny' %}<span class="badge bg-success">Zdolny</span>
+            {% elif s == 'z_ograniczeniami' %}<span class="badge bg-warning text-dark">Ograniczenia</span>
+            {% else %}<span class="badge bg-danger">Niezdolny</span>{% endif %}
+            {% endwith %}
+            {% if karta.rekrut.orzeczenie.dni_do_wygasniecia <= 30 %}
+              <span class="badge bg-warning text-dark" title="Orzeczenie wygasa {{ karta.rekrut.orzeczenie.data_waznosci }}">&#9888; Wygasa</span>
+            {% endif %}
+          {% else %}
+            <span class="badge bg-secondary">Brak orzeczenia</span>
+          {% endif %}
+          {% if karta.aktywny_przydzia %}
+            <span class="badge bg-primary">{{ karta.aktywny_przydzia.stanowisko.nazwa }}</span>
+          {% else %}
+            <span class="badge bg-light text-dark border">Bez przydziału</span>
+          {% endif %}
+        </div>
+
+        <!-- Chipsy stanowisk z paskami i tooltipami -->
+        <div class="mb-1">
+          <small class="text-muted">Dopasowanie do stanowisk:</small>
+        </div>
+        <div>
+          {% for w in karta.stanowiska %}
+          {% with s=w.stanowisko score=w.score %}
+          <div class="stanowisko-chip {% if w.blokady %}blokada{% endif %}"
+               data-stanowisko-id="{{ s.pk }}">
+
+            <div class="d-flex justify-content-between align-items-center">
+              <span>{{ s.nazwa }}</span>
+              <span class="chip-score ms-2
+                {% if score >= 85 %}text-success
+                {% elif score >= 70 %}text-primary
+                {% elif score >= 50 %}text-warning
+                {% else %}text-danger{% endif %}">
+                {% if w.blokady %}—{% else %}{{ score }}%{% endif %}
+              </span>
+            </div>
+
+            <!-- Pasek dopasowania -->
+            {% if not w.blokady %}
+            <div class="match-bar-wrap">
+              <div class="match-bar
+                {% if score >= 85 %}bar-green
+                {% elif score >= 70 %}bar-blue
+                {% elif score >= 50 %}bar-yellow
+                {% else %}bar-red{% endif %}"
+                style="width: {{ score }}%"></div>
+            </div>
+            {% else %}
+            <div class="match-bar-wrap">
+              <div class="match-bar bar-red" style="width:100%; opacity:.3"></div>
+            </div>
+            {% endif %}
+
+            <!-- Tooltip ze szczegółami stanowiska -->
+            <div class="tip" id="tip-{{ s.pk }}">
+              <table>
+                <tr><td>Dźwiganie:</td><td><strong>{{ s.get_zakres_dzwigania_display }}</strong></td></tr>
+                <tr><td>Chodzenie:</td><td><strong>{{ s.get_poziom_chodzenia_display }}</strong></td></tr>
+                <tr><td>Siedzenie:</td><td><strong>{{ s.get_poziom_siedzenia_display }}</strong></td></tr>
+                <tr><td>Powtarzalność:</td><td><strong>{{ s.get_powtarzalnosc_czynnosci_display }}</strong></td></tr>
+                <tr><td>Na zewnątrz:</td><td><strong>{% if s.praca_na_zewnatrz %}Tak{% else %}Nie{% endif %}</strong></td></tr>
+                {% if w.blokady %}
+                <tr><td colspan="2" style="color:#f8a5a5;padding-top:6px">
+                  <i>{% for b in w.blokady %}{{ b }}{% if not forloop.last %} · {% endif %}{% endfor %}</i>
+                </td></tr>
+                {% endif %}
+              </table>
+            </div>
+          </div>
+          {% endwith %}
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Stopka karty -->
+      <div class="card-footer py-2 d-flex gap-2">
+        <a href="{% url 'rekruci:podglad' karta.rekrut.pk %}" class="btn btn-sm btn-outline-secondary">Podgląd</a>
+        <a href="{% url 'rekruci:edytuj' karta.rekrut.pk %}" class="btn btn-sm btn-outline-dark">Edytuj</a>
+        <a href="{% url 'rekruci:scoring' karta.rekrut.pk %}" class="btn btn-sm btn-outline-primary ms-auto">Pełny scoring</a>
+      </div>
+    </div>
+  </div>
+  {% empty %}
+  <div class="col-12">
+    <div class="alert alert-secondary text-center py-4">Brak rekrutów.</div>
+  </div>
+  {% endfor %}
+</div>
+
+<div id="emptyMsg" class="alert alert-secondary text-center py-4 d-none">
+  Brak rekrutów pasujących do filtrów.
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// --- Tooltip: pozycjonowanie żeby nie wychodził poza ekran ---
+document.querySelectorAll('.stanowisko-chip').forEach(chip => {
+  chip.addEventListener('mousemove', e => {
+    const tip = chip.querySelector('.tip');
+    if (!tip) return;
+    const tw = tip.offsetWidth || 240;
+    const th = tip.offsetHeight || 150;
+    // Domyślnie: tooltip nad kursorem
+    let x = e.clientX - tw / 2;
+    let y = e.clientY - th - 12;
+    // Wychodzi poza górę? → pokaż pod kursorem
+    if (y < 8) y = e.clientY + 16;
+    // Wychodzi poza prawy bok?
+    if (x + tw > window.innerWidth - 8) x = window.innerWidth - tw - 8;
+    // Wychodzi poza lewy bok?
+    if (x < 8) x = 8;
+    tip.style.left = x + 'px';
+    tip.style.top  = y + 'px';
+  });
+});
+
+// --- Filtrowanie i sortowanie po stronie klienta ---
+const grid   = document.getElementById('kartyGrid');
+const empty  = document.getElementById('emptyMsg');
+
+function applyFilters() {
+  const q      = document.getElementById('jsSearch').value.toLowerCase().trim();
+  const filtr  = document.getElementById('jsFiltr').value;
+  const sort   = document.getElementById('jsSort').value;
+
+  const cols = Array.from(document.querySelectorAll('.rekrut-col'));
+  let visible = [];
+
+  cols.forEach(col => {
+    const naz   = col.dataset.nazwisko;
+    const im    = col.dataset.imie;
+    const przyp = col.dataset.maPrzydzia;
+
+    const matchQ = !q || naz.includes(q) || im.includes(q);
+    const matchF = filtr === 'wszyscy' || (filtr === 'bez_przydzialu' && przyp === 'nie');
+
+    if (matchQ && matchF) {
+      col.style.display = '';
+      visible.push(col);
+    } else {
+      col.style.display = 'none';
+    }
+  });
+
+  // Sortowanie
+  visible.sort((a, b) => {
+    if (sort === 'nazwisko') {
+      return a.dataset.nazwisko.localeCompare(b.dataset.nazwisko, 'pl');
+    } else if (sort === 'score_desc') {
+      return Number(b.dataset.topScore) - Number(a.dataset.topScore);
+    } else {
+      return Number(a.dataset.topScore) - Number(b.dataset.topScore);
+    }
+  });
+  visible.forEach(col => grid.appendChild(col));
+
+  empty.classList.toggle('d-none', visible.length > 0);
+}
+
+function resetFilters() {
+  document.getElementById('jsSearch').value = '';
+  document.getElementById('jsFiltr').value  = 'wszyscy';
+  document.getElementById('jsSort').value   = 'nazwisko';
+  applyFilters();
+}
+
+document.getElementById('jsSearch').addEventListener('input', applyFilters);
+document.getElementById('jsFiltr').addEventListener('change', applyFilters);
+document.getElementById('jsSort').addEventListener('change', applyFilters);
+
+applyFilters();
+</script>
+{% endblock %}

@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+{% block title %}Wyniki scoringu – {{ rekrut }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4><i class="bi bi-bar-chart"></i> Wyniki scoringu: <strong>{{ rekrut }}</strong></h4>
+  <div>
+    <a href="{% url 'rekruci:podglad' rekrut.pk %}" class="btn btn-outline-secondary btn-sm">Podgląd</a>
+    <a href="{% url 'rekruci:edytuj' rekrut.pk %}" class="btn btn-outline-dark btn-sm">Edytuj</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th style="width:25%">Stanowisko</th>
+          <th style="width:25%">Wynik</th>
+          <th>Blokady</th>
+          <th>Ostrzeżenia</th>
+          {% if rola == 'kierownik' or rola == 'admin' %}
+          <th>Akcja</th>
+          {% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for w in wyniki %}
+        <tr class="{% if w.blokady %}table-danger{% elif w.score >= 70 %}table-success{% elif w.score >= 40 %}table-warning{% endif %}">
+          <td class="fw-semibold">{{ w.stanowisko.nazwa }}</td>
+          <td>
+            {% if w.blokady %}
+              <span class="badge bg-danger">Zablokowane</span>
+            {% else %}
+              <div class="progress score-bar">
+                <div class="progress-bar {% if w.score >= 70 %}bg-success{% elif w.score >= 40 %}bg-warning{% else %}bg-danger{% endif %}"
+                  style="width:{{ w.score }}%">{{ w.score }}%</div>
+              </div>
+            {% endif %}
+          </td>
+          <td>
+            {% for b in w.blokady %}
+            <div class="text-danger small"><i class="bi bi-x-circle"></i> {{ b }}</div>
+            {% endfor %}
+          </td>
+          <td>
+            {% for o in w.ostrzezenia %}
+            <div class="text-warning small"><i class="bi bi-exclamation-triangle"></i> {{ o }}</div>
+            {% endfor %}
+          </td>
+          {% if rola == 'kierownik' or rola == 'admin' %}
+          <td>
+            {% if not w.blokady %}
+            <form method="post" action="{% url 'przydzialy:przydziel' %}">
+              {% csrf_token %}
+              <input type="hidden" name="rekrut_id" value="{{ rekrut.pk }}">
+              <input type="hidden" name="stanowisko_id" value="{{ w.stanowisko.pk }}">
+              <input type="hidden" name="score" value="{{ w.score }}">
+              <input type="hidden" name="zrodlo" value="reczny">
+              <button type="submit" class="btn btn-sm btn-primary">Przydziel</button>
+            </form>
+            {% endif %}
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

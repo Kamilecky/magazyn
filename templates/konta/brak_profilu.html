@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block title %}Brak profilu{% endblock %}
+{% block content %}
+<div class="d-flex flex-column align-items-center justify-content-center" style="min-height: 60vh">
+  <div class="text-center">
+    <h1 class="display-1 fw-bold text-warning">⚠</h1>
+    <h3>Konto bez przypisanej roli</h3>
+    <p class="text-muted">
+      Twoje konto (<strong>{{ request.user.username }}</strong>) nie ma przypisanej roli w systemie.<br>
+      Skontaktuj się z administratorem, aby przypisał Ci rolę HR lub Kierownika.
+    </p>
+    <a href="/admin/konta/profil/add/" class="btn btn-dark mt-2">Przejdź do panelu admina</a>
+  </div>
+</div>
+{% endblock %}

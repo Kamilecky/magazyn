@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+{% block title %}Stanowiska{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4><i class="bi bi-building"></i> Stanowiska magazynowe</h4>
+</div>
+
+<div class="row g-3">
+  {% for d in dane %}
+  <div class="col-md-6 col-xl-4">
+    <div class="card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span class="fw-bold">{{ d.stanowisko.nazwa }}</span>
+        {% if d.stanowisko.aktywne %}
+          <span class="badge bg-success">Aktywne</span>
+        {% else %}
+          <span class="badge bg-secondary">Nieaktywne</span>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        <div class="mb-2">
+          <div class="d-flex justify-content-between mb-1">
+            <small class="text-muted">Obsada: {{ d.aktualnie }} / {{ d.stanowisko.max_pracownikow }}</small>
+            <small class="fw-bold text-{{ d.kolor }}">{{ d.proc }}%</small>
+          </div>
+          <div class="progress" style="height:10px">
+            <div class="progress-bar bg-{{ d.kolor }}" style="width:{{ d.proc }}%"></div>
+          </div>
+        </div>
+        <table class="table table-sm table-borderless mb-0 small">
+          <tr>
+            <td class="text-muted">Siła:</td>
+            <td>{{ d.stanowisko.wymagana_sila_kg }} kg</td>
+            <td class="text-muted">Dźwiganie:</td>
+            <td>{{ d.stanowisko.get_zakres_dzwigania_display }}</td>
+          </tr>
+          <tr>
+            <td class="text-muted">Chodzenie:</td>
+            <td>{{ d.stanowisko.get_poziom_chodzenia_display }}</td>
+            <td class="text-muted">Siedzenie:</td>
+            <td>{{ d.stanowisko.get_poziom_siedzenia_display }}</td>
+          </tr>
+          <tr>
+            <td class="text-muted">Powtarzalność:</td>
+            <td>{{ d.stanowisko.get_powtarzalnosc_czynnosci_display }}</td>
+            <td class="text-muted">Na zewnątrz:</td>
+            <td>{% if d.stanowisko.praca_na_zewnatrz %}Tak{% else %}Nie{% endif %}</td>
+          </tr>
+        </table>
+        <div class="mt-2 d-flex flex-wrap gap-1">
+          {% if d.stanowisko.praca_stojaca %}<span class="badge bg-light text-dark border">Praca stojąca</span>{% endif %}
+          {% if d.stanowisko.praca_przy_monitorze %}<span class="badge bg-light text-dark border">Monitor</span>{% endif %}
+          {% if d.stanowisko.wymaga_komputera %}<span class="badge bg-light text-dark border">Komputer</span>{% endif %}
+        </div>
+      </div>
+      <div class="card-footer py-2">
+        <a href="{% url 'stanowiska:podglad' d.stanowisko.pk %}" class="btn btn-sm btn-outline-dark">Szczegóły i obsada</a>
+      </div>
+    </div>
+  </div>
+  {% empty %}
+  <div class="col-12"><div class="alert alert-secondary">Brak stanowisk.</div></div>
+  {% endfor %}
+</div>
+{% endblock %}

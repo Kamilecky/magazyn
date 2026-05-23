@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+{% block title %}Orzeczenia lekarskie{% endblock %}
+{% block content %}
+<h4 class="mb-3"><i class="bi bi-clipboard2-pulse"></i> Orzeczenia lekarskie</h4>
+
+<div class="row g-2 mb-3">
+  {% with total=dane|length %}
+  {% with brak=dane|length %}
+  <div class="col-6 col-md-3">
+    <div class="card text-center py-2">
+      <div class="fs-3 fw-bold text-success">{{ dane|length }}</div>
+      <div class="small text-muted">Pracowników</div>
+    </div>
+  </div>
+  {% endwith %}
+  {% endwith %}
+  <div class="col-6 col-md-3">
+    <div class="card text-center py-2">
+      <div class="fs-3 fw-bold text-danger">
+        {% with count=0 %}{% for d in dane %}{% if d.stan == 'brak' or d.stan == 'wygaslo' %}{% with count=count|add:1 %}{% endwith %}{% endif %}{% endfor %}
+        {{ dane|length }}{% endwith %}
+      </div>
+      <div class="small text-muted">Wymaga uwagi</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Pracownik</th>
+          <th>Status orzeczenia</th>
+          <th>Data ważności</th>
+          <th>Pozostało dni</th>
+          <th>Stan</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in dane %}
+        <tr class="{% if d.stan == 'brak' or d.stan == 'wygaslo' %}table-danger{% elif d.stan == 'uwaga' %}table-warning{% endif %}">
+          <td><strong>{{ d.rekrut }}</strong></td>
+          <td>
+            {% if d.orzeczenie %}
+              {% if d.orzeczenie.status == 'zdolny' %}<span class="badge bg-success">Zdolny</span>
+              {% elif d.orzeczenie.status == 'z_ograniczeniami' %}<span class="badge bg-warning text-dark">Ograniczenia</span>
+              {% else %}<span class="badge bg-danger">Niezdolny</span>{% endif %}
+            {% else %}
+              <span class="badge bg-secondary">Brak orzeczenia</span>
+            {% endif %}
+          </td>
+          <td>{% if d.orzeczenie %}{{ d.orzeczenie.data_waznosci }}{% else %}—{% endif %}</td>
+          <td>
+            {% if d.dni is not None %}
+              <span class="badge {% if d.dni <= 0 %}bg-danger{% elif d.dni <= 30 %}bg-warning text-dark{% else %}bg-success{% endif %}">
+                {% if d.dni <= 0 %}Wygasło{% else %}{{ d.dni }} dni{% endif %}
+              </span>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {% if d.stan == 'ok' %}<span class="badge bg-success">OK</span>
+            {% elif d.stan == 'uwaga' %}<span class="badge bg-warning text-dark">Wygasa wkrótce</span>
+            {% elif d.stan == 'wygaslo' %}<span class="badge bg-danger">Wygasło</span>
+            {% else %}<span class="badge bg-secondary">Brak</span>{% endif %}
+          </td>
+          <td>
+            <a href="{% url 'rekruci:podglad' d.rekrut.pk %}" class="btn btn-sm btn-outline-secondary">Podgląd</a>
+            <a href="{% url 'rekruci:edytuj' d.rekrut.pk %}" class="btn btn-sm btn-outline-dark">Edytuj</a>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="text-center text-muted py-4">Brak pracowników.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

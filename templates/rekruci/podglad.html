@@ -1,0 +1,110 @@
+{% extends 'base.html' %}
+{% block title %}Podgląd rekruta – {{ rekrut }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4><i class="bi bi-person-lines-fill"></i> {{ rekrut }}</h4>
+  <div>
+    {% if rola == 'hr' or rola == 'admin' %}
+    <a href="{% url 'rekruci:edytuj' rekrut.pk %}" class="btn btn-outline-dark btn-sm">Edytuj</a>
+    {% endif %}
+    <a href="{% url 'rekruci:scoring' rekrut.pk %}" class="btn btn-outline-primary btn-sm">Scoring</a>
+    <a href="{% url 'raporty:karta_pdf' rekrut.pk %}" class="btn btn-outline-secondary btn-sm" target="_blank">PDF</a>
+    <a href="{% url 'rekruci:lista' %}" class="btn btn-secondary btn-sm">Wróć</a>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-md-6">
+    <div class="card mb-3">
+      <div class="card-header fw-bold">Dane osobowe</div>
+      <div class="card-body">
+        <dl class="row mb-0">
+          <dt class="col-5">Imię i nazwisko</dt><dd class="col-7">{{ rekrut }}</dd>
+          <dt class="col-5">Wiek</dt><dd class="col-7">{{ rekrut.wiek }} lat</dd>
+          <dt class="col-5">Data urodzenia</dt><dd class="col-7">{{ rekrut.data_urodzenia }}</dd>
+          <dt class="col-5">Uwagi</dt><dd class="col-7">{{ rekrut.uwagi|default:'—' }}</dd>
+          <dt class="col-5">Dodano</dt><dd class="col-7">{{ rekrut.created_at|date:"d.m.Y" }}</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    {% if rekrut.ankieta %}
+    <div class="card mb-3">
+      <div class="card-header fw-bold">Ankieta fizyczna</div>
+      <div class="card-body">
+        <dl class="row mb-0">
+          {% with a=rekrut.ankieta %}
+          <dt class="col-7">Maks. dźwiganie</dt><dd class="col-5">{{ a.get_max_dzwiganie_kg_display }}</dd>
+          <dt class="col-7">Komfort stania</dt><dd class="col-5">{{ a.komfort_stania }}/5</dd>
+          <dt class="col-7">Umiejętności komputerowe</dt><dd class="col-5">{{ a.get_umiejetnosci_komputerowe_display }}</dd>
+          <dt class="col-7">Tempo pracy</dt><dd class="col-5">{{ a.get_tempo_pracy_display }}</dd>
+          <dt class="col-7">Preferuje ruch</dt><dd class="col-5">{% if a.preferuje_ruch %}Tak{% else %}Nie{% endif %}</dd>
+          <dt class="col-7">Preferuje stałe miejsce</dt><dd class="col-5">{% if a.preferuje_stale_miejsce %}Tak{% else %}Nie{% endif %}</dd>
+          <dt class="col-7">Preferuje zespół</dt><dd class="col-5">{% if a.preferuje_zespol %}Tak{% else %}Nie{% endif %}</dd>
+          <dt class="col-7">Preferuje samodzielnie</dt><dd class="col-5">{% if a.preferuje_samodzielnie %}Tak{% else %}Nie{% endif %}</dd>
+          {% endwith %}
+        </dl>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% if rola in 'hr admin' or rola == 'hr' or rola == 'admin' %}
+{% if rekrut.orzeczenie %}
+<div class="card mb-3">
+  <div class="card-header fw-bold d-flex justify-content-between">
+    <span><i class="bi bi-clipboard2-pulse"></i> Orzeczenie lekarskie</span>
+    {% with d=rekrut.orzeczenie.dni_do_wygasniecia %}
+    {% if d <= 30 %}<span class="badge bg-warning text-dark">Wygasa za {{ d }} dni</span>{% endif %}
+    {% endwith %}
+  </div>
+  <div class="card-body">
+    <dl class="row mb-0">
+      {% with o=rekrut.orzeczenie %}
+      <dt class="col-5">Status</dt>
+      <dd class="col-7">
+        {% if o.status == 'zdolny' %}<span class="badge bg-success">Zdolny</span>
+        {% elif o.status == 'z_ograniczeniami' %}<span class="badge bg-warning text-dark">Z ograniczeniami</span>
+        {% else %}<span class="badge bg-danger">Niezdolny</span>{% endif %}
+      </dd>
+      <dt class="col-5">Maks. dźwiganie</dt><dd class="col-7">{{ o.max_dzwiganie_kg|default:'brak ograniczeń' }} kg</dd>
+      <dt class="col-5">Zakaz stania</dt><dd class="col-7">{% if o.zakaz_stania %}Tak{% else %}Nie{% endif %}</dd>
+      <dt class="col-5">Zakaz pochylania</dt><dd class="col-7">{% if o.zakaz_pochylania %}Tak{% else %}Nie{% endif %}</dd>
+      <dt class="col-5">Maks. monitor</dt><dd class="col-7">{{ o.zakaz_monitora_h|default:'brak ograniczeń' }} h/dzień</dd>
+      <dt class="col-5">Inne ograniczenia</dt><dd class="col-7">{{ o.inne_ograniczenia|default:'—' }}</dd>
+      <dt class="col-5">Data badania</dt><dd class="col-7">{{ o.data_badania }}</dd>
+      <dt class="col-5">Data ważności</dt><dd class="col-7">{{ o.data_waznosci }}</dd>
+      <dt class="col-5">Lekarz</dt><dd class="col-7">{{ o.lekarz|default:'—' }}</dd>
+      {% endwith %}
+    </dl>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-warning"><i class="bi bi-exclamation-triangle"></i> Brak orzeczenia lekarskiego.</div>
+{% endif %}
+{% endif %}
+
+<div class="card">
+  <div class="card-header fw-bold">Historia przydziałów</div>
+  <div class="card-body p-0">
+    <table class="table table-sm mb-0">
+      <thead><tr><th>Stanowisko</th><th>Data</th><th>Autor</th><th>Źródło</th><th>Aktywny</th></tr></thead>
+      <tbody>
+        {% for p in historia %}
+        <tr>
+          <td>{{ p.stanowisko.nazwa }}</td>
+          <td>{{ p.data_przydzialu|date:"d.m.Y H:i" }}</td>
+          <td>{{ p.autor.get_full_name|default:p.autor.username }}</td>
+          <td>{% if p.zrodlo == 'ai' %}<span class="badge bg-info">AI</span>{% else %}<span class="badge bg-secondary">Ręcznie</span>{% endif %}</td>
+          <td>{% if p.aktywny %}<span class="badge bg-success">Tak</span>{% else %}<span class="badge bg-light text-dark">Nie</span>{% endif %}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" class="text-center text-muted py-3">Brak przydziałów.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block title %}Brak dostępu{% endblock %}
+{% block content %}
+<div class="d-flex flex-column align-items-center justify-content-center" style="min-height: 60vh">
+  <div class="text-center">
+    <h1 class="display-1 fw-bold text-danger">403</h1>
+    <h3>Brak dostępu</h3>
+    <p class="text-muted">{{ komunikat }}</p>
+    <a href="{% url 'konta:dashboard' %}" class="btn btn-dark mt-2">Wróć do strony głównej</a>
+  </div>
+</div>
+{% endblock %}

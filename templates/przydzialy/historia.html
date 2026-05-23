@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block title %}Historia przydziałów{% endblock %}
+{% block content %}
+<h4 class="mb-3"><i class="bi bi-clock-history"></i> Historia przydziałów</h4>
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Rekrut</th>
+          <th>Stanowisko</th>
+          <th>Data</th>
+          <th>Autor</th>
+          <th>Źródło</th>
+          <th>Uzasadnienie</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in przydzialy %}
+        <tr>
+          <td><a href="{% url 'rekruci:podglad' p.rekrut.pk %}">{{ p.rekrut }}</a></td>
+          <td>{{ p.stanowisko.nazwa }}</td>
+          <td>{{ p.data_przydzialu|date:"d.m.Y H:i" }}</td>
+          <td>{{ p.autor.get_full_name|default:p.autor.username }}</td>
+          <td>
+            {% if p.zrodlo == 'ai' %}<span class="badge bg-info text-dark">AI</span>
+            {% else %}<span class="badge bg-secondary">Ręcznie</span>{% endif %}
+          </td>
+          <td><small>{{ p.uzasadnienie|truncatechars:60|default:'—' }}</small></td>
+          <td>
+            {% if p.aktywny %}<span class="badge bg-success">Aktywny</span>
+            {% else %}<span class="badge bg-light text-dark">Nieaktywny</span>{% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7" class="text-center text-muted py-4">Brak przydziałów.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

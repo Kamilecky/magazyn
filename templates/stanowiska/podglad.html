@@ -1,0 +1,86 @@
+{% extends 'base.html' %}
+{% block title %}{{ stanowisko.nazwa }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4><i class="bi bi-building"></i> {{ stanowisko.nazwa }}</h4>
+  <a href="{% url 'stanowiska:lista' %}" class="btn btn-outline-secondary btn-sm">← Wróć</a>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-5">
+    <div class="card h-100">
+      <div class="card-header fw-bold">Parametry stanowiska</div>
+      <div class="card-body">
+        <dl class="row mb-0 small">
+          <dt class="col-6">Wymagana siła</dt><dd class="col-6">{{ stanowisko.wymagana_sila_kg }} kg</dd>
+          <dt class="col-6">Zakres dźwigania</dt><dd class="col-6">{{ stanowisko.get_zakres_dzwigania_display }}</dd>
+          <dt class="col-6">Poziom chodzenia</dt><dd class="col-6">{{ stanowisko.get_poziom_chodzenia_display }}</dd>
+          <dt class="col-6">Poziom siedzenia</dt><dd class="col-6">{{ stanowisko.get_poziom_siedzenia_display }}</dd>
+          <dt class="col-6">Powtarzalność</dt><dd class="col-6">{{ stanowisko.get_powtarzalnosc_czynnosci_display }}</dd>
+          <dt class="col-6">Praca stojąca</dt><dd class="col-6">{% if stanowisko.praca_stojaca %}Tak{% else %}Nie{% endif %}</dd>
+          <dt class="col-6">Monitor</dt><dd class="col-6">{% if stanowisko.praca_przy_monitorze %}Tak{% else %}Nie{% endif %}</dd>
+          <dt class="col-6">Komputer</dt><dd class="col-6">{% if stanowisko.wymaga_komputera %}Tak{% else %}Nie{% endif %}</dd>
+          <dt class="col-6">Na zewnątrz</dt><dd class="col-6">{% if stanowisko.praca_na_zewnatrz %}Tak{% else %}Nie{% endif %}</dd>
+          <dt class="col-6">Maks. pracowników</dt><dd class="col-6">{{ stanowisko.max_pracownikow }}</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-7">
+    <div class="card h-100">
+      <div class="card-header fw-bold d-flex justify-content-between">
+        <span>Aktualna obsada</span>
+        <span class="badge bg-{{ kolor }}">{{ aktualnie }} / {{ stanowisko.max_pracownikow }} ({{ proc }}%)</span>
+      </div>
+      <div class="card-body p-0">
+        <div class="progress mx-3 mt-2" style="height:10px">
+          <div class="progress-bar bg-{{ kolor }}" style="width:{{ proc }}%"></div>
+        </div>
+        <table class="table table-sm table-hover mb-0 mt-2">
+          <thead><tr><th>Pracownik</th><th>Od</th><th>Źródło</th><th></th></tr></thead>
+          <tbody>
+            {% for p in przydzialy %}
+            <tr>
+              <td><a href="{% url 'rekruci:podglad' p.rekrut.pk %}">{{ p.rekrut }}</a></td>
+              <td><small>{{ p.data_przydzialu|date:"d.m.Y" }}</small></td>
+              <td>{% if p.zrodlo == 'ai' %}<span class="badge bg-info text-dark">AI</span>{% else %}<span class="badge bg-secondary">Ręcznie</span>{% endif %}</td>
+              <td><a href="{% url 'rekruci:podglad' p.rekrut.pk %}" class="btn btn-sm btn-outline-secondary py-0">→</a></td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4" class="text-center text-muted py-3">Brak aktywnych pracowników.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if stanowisko.opis %}
+<div class="card mb-3">
+  <div class="card-header fw-bold">Opis</div>
+  <div class="card-body">{{ stanowisko.opis }}</div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header fw-bold">Historia przydziałów (ostatnie 20)</div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-hover mb-0">
+      <thead><tr><th>Pracownik</th><th>Data</th><th>Autor</th><th>Źródło</th></tr></thead>
+      <tbody>
+        {% for p in historia %}
+        <tr>
+          <td><a href="{% url 'rekruci:podglad' p.rekrut.pk %}">{{ p.rekrut }}</a></td>
+          <td><small>{{ p.data_przydzialu|date:"d.m.Y" }}</small></td>
+          <td><small>{{ p.autor.get_full_name|default:p.autor.username }}</small></td>
+          <td>{% if p.zrodlo == 'ai' %}<span class="badge bg-info text-dark">AI</span>{% else %}<span class="badge bg-secondary">Ręcznie</span>{% endif %}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="4" class="text-center text-muted py-3">Brak historii.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

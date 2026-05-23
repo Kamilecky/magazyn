@@ -1,0 +1,82 @@
+[
+  {
+    "model": "stanowiska.stanowisko",
+    "pk": 1,
+    "fields": {
+      "nazwa": "Kompletacja zamówień",
+      "opis": "Kompletowanie zamówień klientów zgodnie z listą pickingową.",
+      "wymagana_sila_kg": 10,
+      "praca_stojaca": true,
+      "praca_przy_monitorze": false,
+      "wymaga_komputera": false,
+      "max_pracownikow": 10,
+      "aktywne": true,
+      "created_at": "2025-01-01T08:00:00Z",
+      "updated_at": "2025-01-01T08:00:00Z"
+    }
+  },
+  {
+    "model": "stanowiska.stanowisko",
+    "pk": 2,
+    "fields": {
+      "nazwa": "Stanowisko komputerowe",
+      "opis": "Obsługa systemu magazynowego, wprowadzanie danych, raportowanie.",
+      "wymagana_sila_kg": 0,
+      "praca_stojaca": false,
+      "praca_przy_monitorze": true,
+      "wymaga_komputera": true,
+      "max_pracownikow": 5,
+      "aktywne": true,
+      "created_at": "2025-01-01T08:00:00Z",
+      "updated_at": "2025-01-01T08:00:00Z"
+    }
+  },
+  {
+    "model": "stanowiska.stanowisko",
+    "pk": 3,
+    "fields": {
+      "nazwa": "Układanie na paletach",
+      "opis": "Układanie towaru na paletach i foliowanie, praca z wózkiem paletowym.",
+      "wymagana_sila_kg": 25,
+      "praca_stojaca": true,
+      "praca_przy_monitorze": false,
+      "wymaga_komputera": false,
+      "max_pracownikow": 8,
+      "aktywne": true,
+      "created_at": "2025-01-01T08:00:00Z",
+      "updated_at": "2025-01-01T08:00:00Z"
+    }
+  },
+  {
+    "model": "stanowiska.stanowisko",
+    "pk": 4,
+    "fields": {
+      "nazwa": "Kontrola jakości",
+      "opis": "Sprawdzanie zgodności towaru z dokumentacją, rejestracja odchyleń.",
+      "wymagana_sila_kg": 5,
+      "praca_stojaca": false,
+      "praca_przy_monitorze": true,
+      "wymaga_komputera": true,
+      "max_pracownikow": 4,
+      "aktywne": true,
+      "created_at": "2025-01-01T08:00:00Z",
+      "updated_at": "2025-01-01T08:00:00Z"
+    }
+  },
+  {
+    "model": "stanowiska.stanowisko",
+    "pk": 5,
+    "fields": {
+      "nazwa": "Przyjęcie towaru",
+      "opis": "Rozładunek dostaw, weryfikacja ilości i stanu towaru, kierowanie na lokacje.",
+      "wymagana_sila_kg": 15,
+      "praca_stojaca": true,
+      "praca_przy_monitorze": false,
+      "wymaga_komputera": false,
+      "max_pracownikow": 6,
+      "aktywne": true,
+      "created_at": "2025-01-01T08:00:00Z",
+      "updated_at": "2025-01-01T08:00:00Z"
+    }
+  }
+]
