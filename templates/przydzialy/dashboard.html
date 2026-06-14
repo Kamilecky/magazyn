@@ -1,8 +1,9 @@
 {% extends 'base.html' %}
-{% block title %}Dashboard kierownika{% endblock %}
+{% block title %}Dashboard obsady{% endblock %}
 {% block content %}
 <h4 class="mb-3"><i class="bi bi-speedometer2"></i> Dashboard – obsada stanowisk</h4>
 
+{% if obsada %}
 <div class="row row-cols-1 row-cols-md-3 g-3 mb-4">
   {% for item in obsada %}
   <div class="col">
@@ -17,150 +18,20 @@
           <div class="progress-bar bg-{{ item.kolor }}" style="width:{{ item.proc }}%"></div>
         </div>
       </div>
+      <div class="card-footer bg-transparent border-top-0">
+        <a href="{% url 'stanowiska:podglad' item.stanowisko.pk %}" class="btn btn-sm btn-outline-secondary w-100">
+          <i class="bi bi-eye me-1"></i>Szczegóły
+        </a>
+      </div>
     </div>
   </div>
   {% endfor %}
 </div>
-
-<h5 class="mb-3"><i class="bi bi-person-exclamation"></i> Rekruci bez przydziału</h5>
-
-{% if not rekruci_dane %}
-<div class="alert alert-success">Wszyscy rekruci mają przydzielone stanowiska.</div>
 {% else %}
-<div class="card">
-  <div class="card-body p-0">
-    <table class="table table-hover mb-0">
-      <thead>
-        <tr>
-          <th>Rekrut</th>
-          <th>Wiek</th>
-          <th>Orzeczenie</th>
-          <th>Rekomendacja AI</th>
-          <th>Ostrzeżenia</th>
-          <th>Akcje</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for d in rekruci_dane %}
-        <tr>
-          <td><strong>{{ d.rekrut }}</strong></td>
-          <td>{{ d.rekrut.wiek }} lat</td>
-          <td>
-            {% if d.rekrut.orzeczenie %}
-              {% with s=d.rekrut.orzeczenie.status %}
-              {% if s == 'zdolny' %}<span class="badge bg-success">Zdolny</span>
-              {% elif s == 'z_ograniczeniami' %}<span class="badge bg-warning text-dark">Ograniczenia</span>
-              {% else %}<span class="badge bg-danger">Niezdolny</span>{% endif %}
-              {% endwith %}
-            {% else %}<span class="badge bg-secondary">Brak</span>{% endif %}
-          </td>
-          <td>
-            {% if d.top %}
-            <span class="fw-semibold">{{ d.top.stanowisko.nazwa }}</span>
-            <span class="badge bg-primary ms-1">{{ d.top.score }}%</span>
-            {% else %}
-            <span class="text-danger small">Brak dostępnych stanowisk</span>
-            {% endif %}
-          </td>
-          <td>
-            {% if d.ostrzezenia %}
-            <span data-bs-toggle="tooltip" title="{{ d.ostrzezenia|join:' | ' }}">
-              <i class="bi bi-exclamation-triangle-fill text-warning"></i>
-              <small>{{ d.ostrzezenia|length }}</small>
-            </span>
-            {% else %}—{% endif %}
-          </td>
-          <td>
-            {% if d.top %}
-            <form method="post" action="{% url 'przydzialy:przydziel' %}" class="d-inline">
-              {% csrf_token %}
-              <input type="hidden" name="rekrut_id" value="{{ d.rekrut.pk }}">
-              <input type="hidden" name="stanowisko_id" value="{{ d.top.stanowisko.pk }}">
-              <input type="hidden" name="score" value="{{ d.top.score }}">
-              <input type="hidden" name="zrodlo" value="ai">
-              <input type="hidden" name="uzasadnienie" value="Automatyczny przydział przez AI scoring.">
-              <button type="submit" class="btn btn-sm btn-primary">Przydziel rekomendowane</button>
-            </form>
-            {% endif %}
-            <button type="button" class="btn btn-sm btn-outline-secondary ms-1"
-              data-bs-toggle="modal" data-bs-target="#modalInne{{ d.rekrut.pk }}">
-              Inne stanowisko
-            </button>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-building fs-1 d-block mb-2"></i>
+  Brak aktywnych stanowisk.<br>
+  <small>Dodaj stanowiska w sekcji Stanowiska.</small>
 </div>
-
-<!-- Modale "Inne stanowisko" -->
-{% for d in rekruci_dane %}
-<div class="modal fade" id="modalInne{{ d.rekrut.pk }}" tabindex="-1">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">Przydziel stanowisko – {{ d.rekrut }}</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <form method="post" action="{% url 'przydzialy:przydziel' %}" id="formInne{{ d.rekrut.pk }}">
-        {% csrf_token %}
-        <input type="hidden" name="rekrut_id" value="{{ d.rekrut.pk }}">
-        <input type="hidden" name="zrodlo" value="reczny">
-        <div class="modal-body">
-          <label class="form-label fw-bold">Wybierz stanowisko:</label>
-          {% if d.top %}
-          {% comment %}We need all wyniki for this rekrut – rebuild{% endcomment %}
-          {% endif %}
-          <div id="stanowiskaList{{ d.rekrut.pk }}">
-            <!-- populated inline via template tag workaround -->
-            {% for item in obsada %}
-            <div class="form-check">
-              <input class="form-check-input" type="radio" name="stanowisko_id"
-                value="{{ item.stanowisko.pk }}" id="s{{ d.rekrut.pk }}_{{ item.stanowisko.pk }}"
-                required>
-              <label class="form-check-label" for="s{{ d.rekrut.pk }}_{{ item.stanowisko.pk }}">
-                {{ item.stanowisko.nazwa }}
-                <small class="text-muted">({{ item.aktualnie }}/{{ item.stanowisko.max_pracownikow }})</small>
-              </label>
-            </div>
-            {% endfor %}
-          </div>
-          <div class="mt-3">
-            <label class="form-label fw-bold">Uzasadnienie <small class="text-muted">(min. 20 znaków)</small></label>
-            <textarea name="uzasadnienie" class="form-control" rows="3" minlength="20" required
-              id="uzasadnienie{{ d.rekrut.pk }}"></textarea>
-            <div class="invalid-feedback">Uzasadnienie musi mieć co najmniej 20 znaków.</div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
-          <button type="submit" class="btn btn-dark" onclick="return validateModal('{{ d.rekrut.pk }}')">
-            Przydziel
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-</div>
-{% endfor %}
 {% endif %}
-{% endblock %}
-
-{% block extra_js %}
-<script>
-  function validateModal(pk) {
-    const uzas = document.getElementById('uzasadnienie' + pk);
-    if (!uzas || uzas.value.trim().length < 20) {
-      uzas.classList.add('is-invalid');
-      return false;
-    }
-    uzas.classList.remove('is-invalid');
-    return true;
-  }
-  document.addEventListener('DOMContentLoaded', function() {
-    var tooltips = document.querySelectorAll('[data-bs-toggle="tooltip"]');
-    tooltips.forEach(function(el) { new bootstrap.Tooltip(el); });
-  });
-</script>
 {% endblock %}

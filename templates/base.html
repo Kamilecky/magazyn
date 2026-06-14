@@ -79,6 +79,22 @@
     }
     #sidebarToggle:hover { background: #2d3139; }
     #sidebar.collapsed #sidebarToggle { justify-content: center; padding: 10px 0; }
+    #sidebar.collapsed #sidebarToggleLabel { opacity: 0; width: 0; overflow: hidden; }
+
+    /* Sidebar tooltip (JS-driven, poza overflow:hidden) */
+    #sidebar-tooltip {
+      position: fixed;
+      z-index: 10000;
+      background: #2d3139;
+      color: #fff;
+      padding: 5px 11px;
+      border-radius: 6px;
+      font-size: .82rem;
+      white-space: nowrap;
+      pointer-events: none;
+      box-shadow: 0 2px 8px rgba(0,0,0,.45);
+      display: none;
+    }
 
     /* Layout */
     #appWrapper { display: flex; min-height: calc(100vh - 56px); }
@@ -135,32 +151,38 @@
       <span id="sidebarToggleLabel">Zwiń</span>
     </button>
 
-    <!-- Pracownicy -->
+    <!-- Pracownicy (nowy system) -->
     <div class="sidebar-section">
       <div class="sidebar-section-label">Pracownicy</div>
-      <a class="sidebar-link" href="{% url 'rekruci:lista' %}" data-path="/rekruci/">
-        <i class="bi bi-people-fill"></i><span>Lista pracowników</span>
+      <a class="sidebar-link" href="{% url 'pracownicy:lista' %}" data-path="/pracownicy/" data-label="Zaimportowani pracownicy">
+        <i class="bi bi-people-fill"></i><span>Zaimportowani pracownicy</span>
       </a>
-      <a class="sidebar-link" href="{% url 'rekruci:dodaj' %}" data-path="/rekruci/dodaj/">
-        <i class="bi bi-person-plus-fill"></i><span>Dodaj pracownika</span>
+      <a class="sidebar-link" href="{% url 'pracownicy:import_excel' %}" data-path="/pracownicy/import/" data-label="Import (Excel / CSV)">
+        <i class="bi bi-upload"></i><span>Import (Excel / CSV)</span>
       </a>
     </div>
 
-    <!-- Orzeczenia -->
+    <!-- Plany zmian -->
     <div class="sidebar-section">
-      <div class="sidebar-section-label">Orzeczenia</div>
-      <a class="sidebar-link" href="{% url 'rekruci:orzeczenia' %}" data-path="/rekruci/orzeczenia/">
-        <i class="bi bi-clipboard2-pulse-fill"></i><span>Wszystkie orzeczenia</span>
+      <div class="sidebar-section-label">Plany zmian</div>
+      <a class="sidebar-link" href="{% url 'pracownicy:plany_lista' %}" data-path="/pracownicy/plany/" data-label="Plany stanowiskowe">
+        <i class="bi bi-calendar3"></i><span>Plany stanowiskowe</span>
       </a>
-      <a class="sidebar-link" href="{% url 'raporty:ostrzezenia' %}" data-path="/raporty/ostrzezenia/">
-        <i class="bi bi-exclamation-triangle-fill text-warning"></i><span>Wygasające wkrótce</span>
+      <a class="sidebar-link" href="{% url 'pracownicy:import_plan_poranny' %}" data-path="/pracownicy/import/plan/poranny/" data-label="Import planu porannego">
+        <i class="bi bi-sun-fill text-warning"></i><span>Import planu porannego</span>
+      </a>
+      <a class="sidebar-link" href="{% url 'pracownicy:import_plan_popobudniowy' %}" data-path="/pracownicy/import/plan/popobudniowy/" data-label="Import planu popołudniowego">
+        <i class="bi bi-sun-fill" style="color:#fd7e14"></i><span>Import planu popołudniowego</span>
+      </a>
+      <a class="sidebar-link" href="{% url 'pracownicy:import_plan_nocny' %}" data-path="/pracownicy/import/plan/nocny/" data-label="Import planu nocnego">
+        <i class="bi bi-moon-fill"></i><span>Import planu nocnego</span>
       </a>
     </div>
 
     <!-- Stanowiska -->
     <div class="sidebar-section">
       <div class="sidebar-section-label">Stanowiska</div>
-      <a class="sidebar-link" href="{% url 'stanowiska:lista' %}" data-path="/stanowiska/">
+      <a class="sidebar-link" href="{% url 'stanowiska:lista' %}" data-path="/stanowiska/" data-label="Lista stanowisk">
         <i class="bi bi-building-fill"></i><span>Lista stanowisk</span>
       </a>
     </div>
@@ -168,10 +190,10 @@
     <!-- Przydziały -->
     <div class="sidebar-section">
       <div class="sidebar-section-label">Przydziały</div>
-      <a class="sidebar-link" href="{% url 'przydzialy:dashboard' %}" data-path="/przydzialy/">
+      <a class="sidebar-link" href="{% url 'przydzialy:dashboard' %}" data-path="/przydzialy/" data-label="Dashboard obsady">
         <i class="bi bi-speedometer2"></i><span>Dashboard obsady</span>
       </a>
-      <a class="sidebar-link" href="{% url 'przydzialy:historia' %}" data-path="/przydzialy/historia/">
+      <a class="sidebar-link" href="{% url 'przydzialy:historia' %}" data-path="/przydzialy/historia/" data-label="Historia przydziałów">
         <i class="bi bi-clock-history"></i><span>Historia przydziałów</span>
       </a>
     </div>
@@ -179,7 +201,7 @@
     <!-- Raporty -->
     <div class="sidebar-section">
       <div class="sidebar-section-label">Raporty</div>
-      <a class="sidebar-link" href="{% url 'raporty:obsada_excel' %}" data-path="/raporty/obsada/">
+      <a class="sidebar-link" href="{% url 'raporty:obsada_excel' %}" data-path="/raporty/obsada/" data-label="Raport obsady (Excel)">
         <i class="bi bi-file-earmark-excel-fill text-success"></i><span>Raport obsady (Excel)</span>
       </a>
     </div>
@@ -189,7 +211,7 @@
     {% if rola == 'admin' %}
     <div class="sidebar-section">
       <div class="sidebar-section-label">Administracja</div>
-      <a class="sidebar-link" href="/admin/" data-path="/admin/">
+      <a class="sidebar-link" href="/admin/" data-path="/admin/" data-label="Panel admina">
         <i class="bi bi-gear-fill"></i><span>Panel admina</span>
       </a>
     </div>
@@ -214,13 +236,16 @@
 
 </div>
 
+<div id="sidebar-tooltip"></div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 // ===== SIDEBAR: zwijanie z pamięcią w localStorage =====
 (function() {
-  const sidebar = document.getElementById('sidebar');
-  const icon    = document.getElementById('sidebarIcon');
-  const label   = document.getElementById('sidebarToggleLabel');
+  const sidebar  = document.getElementById('sidebar');
+  const icon     = document.getElementById('sidebarIcon');
+  const label    = document.getElementById('sidebarToggleLabel');
+  const stt      = document.getElementById('sidebar-tooltip');
   if (!sidebar) return;
 
   function setCollapsed(collapsed) {
@@ -228,9 +253,9 @@
     icon.className  = collapsed ? 'bi bi-layout-sidebar' : 'bi bi-layout-sidebar-reverse';
     if (label) label.textContent = collapsed ? 'Rozwiń' : 'Zwiń';
     localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0');
+    if (!collapsed) stt.style.display = 'none';
   }
 
-  // Przywróć stan z poprzedniej sesji
   setCollapsed(localStorage.getItem('sidebarCollapsed') === '1');
 
   document.getElementById('sidebarToggle').addEventListener('click', () => {
@@ -244,6 +269,19 @@
     if (lp && path.startsWith(lp) && lp !== '/') {
       link.classList.add('active');
     }
+  });
+
+  // Tooltip ikon przy zwiniętym sidebarze
+  document.querySelectorAll('.sidebar-link[data-label]').forEach(link => {
+    link.addEventListener('mouseenter', function() {
+      if (!sidebar.classList.contains('collapsed')) return;
+      const rect = this.getBoundingClientRect();
+      stt.textContent = this.dataset.label;
+      stt.style.display = 'block';
+      stt.style.top  = (rect.top + rect.height / 2 - stt.offsetHeight / 2) + 'px';
+      stt.style.left = (rect.right + 10) + 'px';
+    });
+    link.addEventListener('mouseleave', () => { stt.style.display = 'none'; });
   });
 })();
 </script>

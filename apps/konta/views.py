@@ -12,4 +12,4 @@ def dashboard(request):
     if rola == 'admin':
         return redirect('/admin/')
     else:
-        return redirect('rekruci:lista')
+        return redirect('pracownicy:lista')

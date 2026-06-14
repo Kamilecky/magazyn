@@ -19,7 +19,7 @@
       <tbody>
         {% for p in przydzialy %}
         <tr>
-          <td><a href="{% url 'rekruci:podglad' p.rekrut.pk %}">{{ p.rekrut }}</a></td>
+          <td>{{ p.rekrut }}</td>
           <td>{{ p.stanowisko.nazwa }}</td>
           <td>{{ p.data_przydzialu|date:"d.m.Y H:i" }}</td>
           <td>{{ p.autor.get_full_name|default:p.autor.username }}</td>

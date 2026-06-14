@@ -1,0 +1,81 @@
+{% extends 'base.html' %}
+{% block title %}Import pracowników{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4><i class="bi bi-upload"></i> Import pracowników</h4>
+  <a href="{% url 'pracownicy:lista' %}" class="btn btn-sm btn-outline-secondary">← Wróć</a>
+</div>
+
+<div class="row">
+  <div class="col-md-7 col-lg-6">
+    <div class="card">
+      <div class="card-body">
+        <p class="text-muted small mb-2">
+          Wgraj plik <strong>.xlsx</strong> lub <strong>.csv</strong> z danymi pracowników.
+          System automatycznie zidentyfikuje kolumny z imieniem, nazwiskiem oraz stanowiskami —
+          nawet jeśli kolumny mają niestandardowe nazwy lub kolejność.
+        </p>
+        <p class="text-muted small mb-1">Obsługiwane stanowiska:</p>
+        <div class="mb-3 d-flex flex-wrap gap-1">
+          <span class="badge bg-secondary">PTS 4</span>
+          <span class="badge bg-secondary">PTS 10</span>
+          <span class="badge bg-secondary">Sorter - Wrzucanie</span>
+          <span class="badge bg-secondary">Sorter - Zbieranie</span>
+          <span class="badge bg-secondary">AA</span>
+          <span class="badge bg-secondary">Wózek - Czołówka</span>
+          <span class="badge bg-secondary">Wózek - Retrack</span>
+          <span class="badge bg-secondary">Wózek - Piesek</span>
+        </div>
+        <p class="text-muted small mb-3">
+          Jeśli pracownik o danym imieniu i nazwisku już istnieje w bazie, jego stanowiska
+          zostaną zaktualizowane (rekord nie zostanie zduplikowany).
+        </p>
+        <form method="post" enctype="multipart/form-data" id="importForm">
+          {% csrf_token %}
+          <div class="mb-3">
+            <label for="plik" class="form-label fw-bold">Plik Excel (.xlsx) lub CSV (.csv)</label>
+            <input type="file" name="plik" id="plik" class="form-control"
+                   accept=".xlsx,.csv" required>
+          </div>
+          <button type="submit" class="btn btn-primary" id="importBtn">
+            <i class="bi bi-cloud-upload"></i> Importuj
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal przetwarzania -->
+<div class="modal fade" id="importProcessingModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-body text-center py-4">
+        <div class="spinner-border text-primary mb-3" role="status" style="width:3rem;height:3rem;">
+          <span class="visually-hidden">Ładowanie…</span>
+        </div>
+        <h5 class="mb-2">Trwa przetwarzanie pliku</h5>
+        <p class="text-muted mb-1">Tworzona jest lista pracowników na stanowiska. Proszę czekać…</p>
+        <small class="text-danger">Nie zamykaj okna przeglądarki.</small>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const form = document.querySelector('form[enctype="multipart/form-data"]');
+  const importModal = new bootstrap.Modal(
+    document.getElementById('importProcessingModal'),
+    { backdrop: 'static', keyboard: false }
+  );
+  if (form) {
+    form.addEventListener('submit', function () {
+      importModal.show();
+    });
+  }
+});
+</script>
+{% endblock %}

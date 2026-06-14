@@ -9,10 +9,10 @@ urlpatterns = [
     path('konta/login/', auth_views.LoginView.as_view(), name='login'),
     path('konta/logout/', auth_views.LogoutView.as_view(), name='logout'),
     path('konta/', include('apps.konta.urls')),
-    path('rekruci/', include('apps.rekruci.urls')),
-    path('przydzialy/', include('apps.przydzialy.urls')),
+path('przydzialy/', include('apps.przydzialy.urls')),
     path('raporty/', include('apps.raporty.urls')),
     path('stanowiska/', include('apps.stanowiska.urls')),
+    path('pracownicy/', include('apps.pracownicy.urls')),
 ]
 
 handler404 = 'config.views.error_404'

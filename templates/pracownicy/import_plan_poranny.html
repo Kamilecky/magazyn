@@ -1,0 +1,66 @@
+{% extends 'base.html' %}
+{% block title %}Import planu porannego{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4><i class="bi bi-sun-fill text-warning"></i> Import planu porannego (zmiana 1)</h4>
+  <a href="{% url 'pracownicy:plany_lista' %}" class="btn btn-outline-secondary btn-sm">← Plany zmian</a>
+</div>
+
+{% if ostatni_import %}
+<div class="alert alert-info d-flex align-items-center gap-2 mb-3">
+  <i class="bi bi-info-circle-fill"></i>
+  <span>
+    Ostatni import: <strong>{{ ostatni_import.nazwa_pliku }}</strong>
+    ({{ ostatni_import.data_importu|date:"d.m.Y H:i" }},
+    {{ ostatni_import.dane_raw|length }} stanowisk)
+  </span>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header fw-bold">Wgraj plik planu porannego</div>
+  <div class="card-body">
+    <p class="text-muted small mb-3">
+      Obsługiwany format: <strong>.xlsx</strong>. Plik powinien zawierać stanowiska i wymaganą obsadę.
+      AI rozpozna kolumny automatycznie.
+    </p>
+    <form method="post" enctype="multipart/form-data" id="importForm">
+      {% csrf_token %}
+      <div class="mb-3">
+        <label for="plik" class="form-label">Plik Excel (.xlsx)</label>
+        <input type="file" class="form-control" id="plik" name="plik" accept=".xlsx" required>
+      </div>
+      <button type="submit" class="btn btn-primary">
+        <i class="bi bi-upload me-1"></i> Importuj plan poranny
+      </button>
+    </form>
+  </div>
+</div>
+
+<div class="modal fade" id="importProcessingModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-body text-center py-4">
+        <div class="spinner-border text-primary mb-3" style="width:3rem;height:3rem;" role="status">
+          <span class="visually-hidden">Ładowanie…</span>
+        </div>
+        <h5 class="mb-2">Trwa przetwarzanie pliku</h5>
+        <p class="text-muted mb-1">AI analizuje plan zmiany. Proszę czekać…</p>
+        <small class="text-danger">Nie zamykaj okna przeglądarki.</small>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const importModal = new bootstrap.Modal(
+  document.getElementById('importProcessingModal'),
+  { backdrop: 'static', keyboard: false }
+);
+document.getElementById('importForm').addEventListener('submit', function () {
+  importModal.show();
+});
+</script>
+{% endblock %}

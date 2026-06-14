@@ -24,6 +24,7 @@ INSTALLED_APPS = [
     'apps.scoring',
     'apps.przydzialy',
     'apps.raporty',
+    'apps.pracownicy',
 ]
 
 MIDDLEWARE = [
@@ -88,3 +89,4 @@ LOGIN_REDIRECT_URL = '/konta/dashboard/'
 LOGOUT_REDIRECT_URL = '/konta/login/'
 
 FIELD_ENCRYPTION_KEY = env('FIELD_ENCRYPTION_KEY')
+OPENAI_API_KEY = env('OPENAI_API_KEY', default='')

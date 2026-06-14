@@ -1,0 +1,167 @@
+{% extends 'base.html' %}
+{% block title %}Zaimportowani pracownicy{% endblock %}
+
+{% block extra_css %}
+<style>
+  .avatar-circle {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #0d6efd, #0056b3);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 1rem;
+    flex-shrink: 0;
+    letter-spacing: .02em;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-people-fill"></i> Zaimportowani pracownicy</h4>
+  <div class="d-flex gap-2">
+    {% if pracownicy %}
+    <button type="button" class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#modalUsunWszystkich">
+      <i class="bi bi-trash3"></i> Wyczyść wszystkich
+    </button>
+    {% endif %}
+    <a href="{% url 'pracownicy:import_excel' %}" class="btn btn-primary btn-sm">
+      <i class="bi bi-upload"></i> Import z Excel
+    </a>
+  </div>
+</div>
+
+<!-- Pasek wyszukiwania -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-center">
+      <div class="col-md-8">
+        <input type="text" id="szukaj" class="form-control form-control-sm"
+               placeholder="Szukaj po imieniu lub nazwisku…">
+      </div>
+      <div class="col-md-3">
+        <select id="sortuj" class="form-select form-select-sm">
+          <option value="az">Alfabetycznie A–Z</option>
+          <option value="za">Alfabetycznie Z–A</option>
+        </select>
+      </div>
+      <div class="col-md-1 text-end">
+        <span id="licznikWynikow" class="text-muted small fw-bold">{{ pracownicy|length }}</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Siatka kart -->
+<div id="kartyGrid" class="row g-3">
+  {% for p in pracownicy %}
+  <div class="col-md-6 col-xl-4 col-xxl-3 karta-pracownika"
+       data-imie="{{ p.imie|lower }}"
+       data-nazwisko="{{ p.nazwisko|lower }}"
+       data-sortname="{{ p.nazwisko|lower }} {{ p.imie|lower }}">
+    <div class="card h-100 shadow-sm">
+      <div class="card-header d-flex align-items-center gap-3 py-3">
+        <div class="avatar-circle">{{ p.imie|slice:":1"|upper }}{{ p.nazwisko|slice:":1"|upper }}</div>
+        <div class="flex-grow-1">
+          <div class="fw-bold">{{ p.imie }} {{ p.nazwisko }}</div>
+          <div class="small text-muted">
+            {% if p.doswiadczenie %}{{ p.doswiadczenie|length }} poz. doświadczenia{% else %}brak doświadczenia{% endif %}
+          </div>
+        </div>
+        <form method="post" action="{% url 'pracownicy:usun_pracownika' p.pk %}"
+              onsubmit="return confirm('Usunąć {{ p.imie }} {{ p.nazwisko }}?')">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-outline-danger btn-sm" title="Usuń pracownika">
+            <i class="bi bi-trash3"></i>
+          </button>
+        </form>
+      </div>
+      <div class="card-body py-2">
+        {% if p.doswiadczenie %}
+          {% for d in p.doswiadczenie %}
+          <span class="badge bg-light text-dark border me-1 mb-1">{{ d }}</span>
+          {% endfor %}
+        {% else %}
+          <span class="text-muted small"><i class="bi bi-dash-circle"></i> Brak danych o doświadczeniu</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% empty %}
+  <div class="col-12">
+    <div class="alert alert-secondary">
+      Brak pracowników w bazie danych.
+      <a href="{% url 'pracownicy:import_excel' %}">Zaimportuj pracowników z pliku Excel.</a>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Modal: usuń wszystkich -->
+<div class="modal fade" id="modalUsunWszystkich" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header border-0">
+        <h5 class="modal-title text-danger"><i class="bi bi-exclamation-triangle-fill me-2"></i>Wyczyść wszystkich pracowników</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        Czy na pewno chcesz usunąć <strong>wszystkich</strong> zaimportowanych pracowników?<br>
+        <span class="text-danger small">Tej operacji nie można cofnąć.</span>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+        <form method="post" action="{% url 'pracownicy:usun_wszystkich' %}">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-danger">
+            <i class="bi bi-trash3-fill me-1"></i>Usuń wszystkich
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  'use strict';
+  const szukaj  = document.getElementById('szukaj');
+  const sortuj  = document.getElementById('sortuj');
+  const grid    = document.getElementById('kartyGrid');
+  const licznik = document.getElementById('licznikWynikow');
+
+  function aktualizuj() {
+    const q    = (szukaj.value || '').toLowerCase().trim();
+    const sort = sortuj.value;
+    const karty = Array.from(grid.querySelectorAll('.karta-pracownika'));
+    let widoczne = 0;
+
+    karty.forEach(k => {
+      const pasuje = !q || k.dataset.imie.includes(q) || k.dataset.nazwisko.includes(q);
+      k.style.display = pasuje ? '' : 'none';
+      if (pasuje) widoczne++;
+    });
+
+    if (licznik) licznik.textContent = widoczne;
+
+    karty
+      .filter(k => k.style.display !== 'none')
+      .sort((a, b) => {
+        const na = a.dataset.sortname || '';
+        const nb = b.dataset.sortname || '';
+        return sort === 'za' ? nb.localeCompare(na, 'pl') : na.localeCompare(nb, 'pl');
+      })
+      .forEach(k => grid.appendChild(k));
+  }
+
+  szukaj.addEventListener('input',  aktualizuj);
+  sortuj.addEventListener('change', aktualizuj);
+})();
+</script>
+{% endblock %}
