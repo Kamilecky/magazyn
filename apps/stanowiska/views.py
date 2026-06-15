@@ -4,7 +4,6 @@ from django.contrib.auth.decorators import login_required
 from .models import Stanowisko
 from .forms import StanowiskoForm
 from apps.pracownicy.models import PlanZmiany
-from apps.konta.decorators import tylko_hr
 
 
 def _kolor(proc):
@@ -14,7 +13,7 @@ def _kolor(proc):
 def _pracownicy_ze_stanowiska(stanowisko_nazwa):
     """Zwraca listę pracowników dopasowanych do stanowiska z najnowszych planów."""
     wyniki = []
-    for zmiana in ('dzienny', 'nocny'):
+    for zmiana in ('poranny', 'popobudniowy', 'nocny'):
         plan = PlanZmiany.objects.filter(zmiana=zmiana).first()
         if not plan or not plan.dopasowanie:
             continue
@@ -61,7 +60,7 @@ def podglad(request, pk):
     })
 
 
-@tylko_hr
+@login_required
 def dodaj(request):
     if request.method == 'POST':
         form = StanowiskoForm(request.POST)
@@ -74,7 +73,7 @@ def dodaj(request):
     return render(request, 'stanowiska/formularz.html', {'form': form, 'tryb': 'dodaj'})
 
 
-@tylko_hr
+@login_required
 def edytuj(request, pk):
     stanowisko = get_object_or_404(Stanowisko, pk=pk)
     if request.method == 'POST':
@@ -88,7 +87,7 @@ def edytuj(request, pk):
     return render(request, 'stanowiska/formularz.html', {'form': form, 'stanowisko': stanowisko, 'tryb': 'edycja'})
 
 
-@tylko_hr
+@login_required
 def usun(request, pk):
     stanowisko = get_object_or_404(Stanowisko, pk=pk)
     if request.method == 'POST':

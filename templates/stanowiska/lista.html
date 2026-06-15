@@ -3,11 +3,9 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h4><i class="bi bi-building"></i> Stanowiska magazynowe</h4>
-  {% if request.user.profil.rola == 'hr' or request.user.profil.rola == 'admin' %}
   <a href="{% url 'stanowiska:dodaj' %}" class="btn btn-primary btn-sm">
     <i class="bi bi-plus-lg me-1"></i>Dodaj stanowisko
   </a>
-  {% endif %}
 </div>
 
 <div class="row g-3">

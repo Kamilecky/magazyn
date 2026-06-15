@@ -16,11 +16,20 @@ def _log(request, akcja, rekrut=None):
 
 def _obsada_ze_stanowiska(stanowisko_nazwa):
     aktualnie = 0
-    for zmiana in ('dzienny', 'nocny'):
+    pracownicy = []
+    for zmiana in ('poranny', 'popobudniowy', 'nocny'):
         plan = PlanZmiany.objects.filter(zmiana=zmiana).first()
         if plan and plan.dopasowanie:
-            aktualnie += len(plan.dopasowanie.get(stanowisko_nazwa) or [])
-    return aktualnie
+            osoby = plan.dopasowanie.get(stanowisko_nazwa) or []
+            aktualnie += len(osoby)
+            for p in osoby:
+                pracownicy.append({
+                    'imie': p.get('imie', ''),
+                    'nazwisko': p.get('nazwisko', ''),
+                    'zmiana': plan.get_zmiana_display(),
+                })
+    pracownicy.sort(key=lambda p: (p['nazwisko'], p['imie']))
+    return aktualnie, pracownicy
 
 
 @login_required
@@ -28,13 +37,14 @@ def dashboard(request):
     stanowiska = Stanowisko.objects.filter(aktywne=True)
     obsada = []
     for s in stanowiska:
-        aktualnie = _obsada_ze_stanowiska(s.nazwa)
+        aktualnie, pracownicy = _obsada_ze_stanowiska(s.nazwa)
         proc = min(int(aktualnie / s.max_pracownikow * 100) if s.max_pracownikow else 0, 100)
         obsada.append({
             'stanowisko': s,
             'aktualnie': aktualnie,
             'proc': proc,
             'kolor': 'danger' if proc > 90 else ('warning' if proc >= 70 else 'success'),
+            'pracownicy': pracownicy,
         })
     return render(request, 'przydzialy/dashboard.html', {'obsada': obsada})
 

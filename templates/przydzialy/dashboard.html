@@ -4,23 +4,41 @@
 <h4 class="mb-3"><i class="bi bi-speedometer2"></i> Dashboard – obsada stanowisk</h4>
 
 {% if obsada %}
-<div class="row row-cols-1 row-cols-md-3 g-3 mb-4">
+<div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3 mb-4">
   {% for item in obsada %}
   <div class="col">
     <div class="card h-100">
-      <div class="card-body">
-        <h6 class="card-title fw-bold">{{ item.stanowisko.nazwa }}</h6>
+      <div class="card-header d-flex justify-content-between align-items-center py-2">
+        <span class="fw-bold">{{ item.stanowisko.nazwa }}</span>
+        <span class="badge bg-{{ item.kolor }}">{{ item.aktualnie }}/{{ item.stanowisko.max_pracownikow }}</span>
+      </div>
+      <div class="card-body pb-2">
         <div class="d-flex justify-content-between mb-1">
-          <small>{{ item.aktualnie }} / {{ item.stanowisko.max_pracownikow }} pracowników</small>
+          <small class="text-muted">Obsada</small>
           <small class="fw-bold text-{{ item.kolor }}">{{ item.proc }}%</small>
         </div>
-        <div class="progress" style="height:12px">
+        <div class="progress mb-3" style="height:10px">
           <div class="progress-bar bg-{{ item.kolor }}" style="width:{{ item.proc }}%"></div>
         </div>
+
+        {% if item.pracownicy %}
+        <ul class="list-unstyled mb-0 small">
+          {% for p in item.pracownicy %}
+          <li class="d-flex justify-content-between align-items-center py-1 border-bottom">
+            <span>{{ p.imie }} {{ p.nazwisko }}</span>
+            <span class="badge bg-secondary ms-2" style="font-size:.7rem;white-space:nowrap">{{ p.zmiana }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-muted small mb-0 text-center py-2">
+          <i class="bi bi-inbox me-1"></i>Brak dopasowanych pracowników
+        </p>
+        {% endif %}
       </div>
-      <div class="card-footer bg-transparent border-top-0">
+      <div class="card-footer bg-transparent pt-2">
         <a href="{% url 'stanowiska:podglad' item.stanowisko.pk %}" class="btn btn-sm btn-outline-secondary w-100">
-          <i class="bi bi-eye me-1"></i>Szczegóły
+          <i class="bi bi-eye me-1"></i>Szczegóły stanowiska
         </a>
       </div>
     </div>
