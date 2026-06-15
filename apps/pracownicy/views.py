@@ -1,4 +1,5 @@
 import os
+import sys
 import csv
 import io
 import json
@@ -348,6 +349,9 @@ def usun_plan(request, pk):
 
 _PDF_FONTS_REGISTERED = False
 
+def _znajdz_font(kandydaci):
+    return next((p for p in kandydaci if os.path.exists(p)), None)
+
 def _rejestruj_fonty_pdf():
     global _PDF_FONTS_REGISTERED
     if _PDF_FONTS_REGISTERED:
@@ -355,10 +359,44 @@ def _rejestruj_fonty_pdf():
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
     from reportlab.pdfbase.pdfmetrics import registerFontFamily
-    d = 'C:/Windows/Fonts'
-    pdfmetrics.registerFont(TTFont('Pl',     os.path.join(d, 'arial.ttf')))
-    pdfmetrics.registerFont(TTFont('Pl-B',   os.path.join(d, 'arialbd.ttf')))
-    pdfmetrics.registerFont(TTFont('Pl-I',   os.path.join(d, 'ariali.ttf')))
+
+    if sys.platform == 'win32':
+        d = 'C:/Windows/Fonts'
+        normal = os.path.join(d, 'arial.ttf')
+        bold   = os.path.join(d, 'arialbd.ttf')
+        italic = os.path.join(d, 'ariali.ttf')
+    else:
+        # Linux (PythonAnywhere / Ubuntu) — szuka DejaVu, Liberation lub Arial
+        normal = _znajdz_font([
+            '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+            '/usr/share/fonts/truetype/ttf-dejavu/DejaVuSans.ttf',
+            '/usr/share/fonts/dejavu/DejaVuSans.ttf',
+            '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+            '/usr/share/fonts/truetype/msttcorefonts/Arial.ttf',
+        ])
+        bold = _znajdz_font([
+            '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+            '/usr/share/fonts/truetype/ttf-dejavu/DejaVuSans-Bold.ttf',
+            '/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf',
+            '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
+            '/usr/share/fonts/truetype/msttcorefonts/Arial_Bold.ttf',
+        ])
+        italic = _znajdz_font([
+            '/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf',
+            '/usr/share/fonts/truetype/ttf-dejavu/DejaVuSans-Oblique.ttf',
+            '/usr/share/fonts/dejavu/DejaVuSans-Oblique.ttf',
+            '/usr/share/fonts/truetype/liberation/LiberationSans-Italic.ttf',
+            '/usr/share/fonts/truetype/msttcorefonts/Arial_Italic.ttf',
+        ])
+        if not normal:
+            raise FileNotFoundError(
+                'Brak czcionki TrueType obsługującej polskie znaki. '
+                'Na serwerze uruchom: apt install fonts-dejavu-core'
+            )
+
+    pdfmetrics.registerFont(TTFont('Pl',   normal))
+    pdfmetrics.registerFont(TTFont('Pl-B', bold   or normal))
+    pdfmetrics.registerFont(TTFont('Pl-I', italic or normal))
     registerFontFamily('Pl', normal='Pl', bold='Pl-B', italic='Pl-I')
     _PDF_FONTS_REGISTERED = True
 
