@@ -1,0 +1,157 @@
+{% extends 'base.html' %}
+{% block title %}{% if tryb == 'edycja' %}Edytuj stanowisko{% else %}Dodaj stanowisko{% endif %}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4>
+    <i class="bi bi-building"></i>
+    {% if tryb == 'edycja' %}Edycja: {{ stanowisko.nazwa }}{% else %}Nowe stanowisko{% endif %}
+  </h4>
+  <a href="{% if stanowisko %}{% url 'stanowiska:podglad' stanowisko.pk %}{% else %}{% url 'stanowiska:lista' %}{% endif %}"
+     class="btn btn-outline-secondary btn-sm">← Wróć</a>
+</div>
+
+<form method="post" novalidate>
+  {% csrf_token %}
+
+  {% if form.non_field_errors %}
+  <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+  {% endif %}
+
+  <!-- Informacje ogólne -->
+  <div class="card mb-3">
+    <div class="card-header fw-bold">Informacje ogólne</div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-8">
+          <label class="form-label fw-semibold">{{ form.nazwa.label }}</label>
+          {{ form.nazwa }}
+          {% if form.nazwa.errors %}<div class="text-danger small mt-1">{{ form.nazwa.errors }}</div>{% endif %}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">{{ form.max_pracownikow.label }}</label>
+          {{ form.max_pracownikow }}
+          {% if form.max_pracownikow.errors %}<div class="text-danger small mt-1">{{ form.max_pracownikow.errors }}</div>{% endif %}
+        </div>
+        <div class="col-12">
+          <label class="form-label fw-semibold">{{ form.opis.label }}</label>
+          {{ form.opis }}
+          {% if form.opis.errors %}<div class="text-danger small mt-1">{{ form.opis.errors }}</div>{% endif %}
+        </div>
+        <div class="col-12">
+          <div class="form-check">
+            {{ form.aktywne }}
+            <label class="form-check-label fw-semibold" for="{{ form.aktywne.id_for_label }}">{{ form.aktywne.label }}</label>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Wymagania fizyczne -->
+  <div class="card mb-3">
+    <div class="card-header fw-bold">Wymagania fizyczne</div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">{{ form.wymagana_sila_kg.label }}</label>
+          <div class="input-group">
+            {{ form.wymagana_sila_kg }}
+            <span class="input-group-text">kg</span>
+          </div>
+          {% if form.wymagana_sila_kg.errors %}<div class="text-danger small mt-1">{{ form.wymagana_sila_kg.errors }}</div>{% endif %}
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">{{ form.zakres_dzwigania.label }}</label>
+          {{ form.zakres_dzwigania }}
+          {% if form.zakres_dzwigania.errors %}<div class="text-danger small mt-1">{{ form.zakres_dzwigania.errors }}</div>{% endif %}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">{{ form.poziom_chodzenia.label }}</label>
+          {{ form.poziom_chodzenia }}
+          {% if form.poziom_chodzenia.errors %}<div class="text-danger small mt-1">{{ form.poziom_chodzenia.errors }}</div>{% endif %}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">{{ form.poziom_siedzenia.label }}</label>
+          {{ form.poziom_siedzenia }}
+          {% if form.poziom_siedzenia.errors %}<div class="text-danger small mt-1">{{ form.poziom_siedzenia.errors }}</div>{% endif %}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">{{ form.powtarzalnosc_czynnosci.label }}</label>
+          {{ form.powtarzalnosc_czynnosci }}
+          {% if form.powtarzalnosc_czynnosci.errors %}<div class="text-danger small mt-1">{{ form.powtarzalnosc_czynnosci.errors }}</div>{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Warunki pracy -->
+  <div class="card mb-4">
+    <div class="card-header fw-bold">Warunki pracy</div>
+    <div class="card-body">
+      <div class="row g-2">
+        {% for field in form.praca_stojaca|make_list %}{% endfor %}
+        <div class="col-md-6">
+          <div class="form-check form-switch">
+            {{ form.praca_stojaca }}
+            <label class="form-check-label" for="{{ form.praca_stojaca.id_for_label }}">{{ form.praca_stojaca.label }}</label>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="form-check form-switch">
+            {{ form.praca_przy_monitorze }}
+            <label class="form-check-label" for="{{ form.praca_przy_monitorze.id_for_label }}">{{ form.praca_przy_monitorze.label }}</label>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="form-check form-switch">
+            {{ form.wymaga_komputera }}
+            <label class="form-check-label" for="{{ form.wymaga_komputera.id_for_label }}">{{ form.wymaga_komputera.label }}</label>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="form-check form-switch">
+            {{ form.praca_na_zewnatrz }}
+            <label class="form-check-label" for="{{ form.praca_na_zewnatrz.id_for_label }}">{{ form.praca_na_zewnatrz.label }}</label>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="d-flex gap-2">
+    <button type="submit" class="btn btn-primary">
+      <i class="bi bi-check-lg me-1"></i>
+      {% if tryb == 'edycja' %}Zapisz zmiany{% else %}Dodaj stanowisko{% endif %}
+    </button>
+    <a href="{% if stanowisko %}{% url 'stanowiska:podglad' stanowisko.pk %}{% else %}{% url 'stanowiska:lista' %}{% endif %}"
+       class="btn btn-outline-secondary">Anuluj</a>
+    {% if tryb == 'edycja' %}
+    <button type="button" class="btn btn-outline-danger ms-auto"
+            onclick="document.getElementById('modal-usun').style.display='flex'">
+      <i class="bi bi-trash me-1"></i>Usuń stanowisko
+    </button>
+    {% endif %}
+  </div>
+</form>
+
+{% if tryb == 'edycja' %}
+<!-- Modal potwierdzenia usunięcia -->
+<div id="modal-usun" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:9999; align-items:center; justify-content:center;">
+  <div class="card shadow-lg" style="max-width:420px; width:100%; margin:1rem;">
+    <div class="card-header bg-danger text-white fw-bold">Potwierdź usunięcie</div>
+    <div class="card-body">
+      <p>Czy na pewno chcesz usunąć stanowisko <strong>{{ stanowisko.nazwa }}</strong>?</p>
+      <p class="text-muted small">Tej operacji nie można cofnąć.</p>
+    </div>
+    <div class="card-footer d-flex gap-2 justify-content-end">
+      <button type="button" class="btn btn-secondary btn-sm"
+              onclick="document.getElementById('modal-usun').style.display='none'">Anuluj</button>
+      <form method="post" action="{% url 'stanowiska:usun' stanowisko.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger btn-sm">Usuń</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,7 +1,10 @@
-from django.shortcuts import render, get_object_or_404
+from django.shortcuts import render, get_object_or_404, redirect
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from .models import Stanowisko
+from .forms import StanowiskoForm
 from apps.pracownicy.models import PlanZmiany
+from apps.konta.decorators import tylko_hr
 
 
 def _kolor(proc):
@@ -56,3 +59,41 @@ def podglad(request, pk):
         'proc': proc,
         'kolor': _kolor(proc),
     })
+
+
+@tylko_hr
+def dodaj(request):
+    if request.method == 'POST':
+        form = StanowiskoForm(request.POST)
+        if form.is_valid():
+            stanowisko = form.save()
+            messages.success(request, f'Stanowisko „{stanowisko.nazwa}" zostało dodane.')
+            return redirect('stanowiska:podglad', pk=stanowisko.pk)
+    else:
+        form = StanowiskoForm()
+    return render(request, 'stanowiska/formularz.html', {'form': form, 'tryb': 'dodaj'})
+
+
+@tylko_hr
+def edytuj(request, pk):
+    stanowisko = get_object_or_404(Stanowisko, pk=pk)
+    if request.method == 'POST':
+        form = StanowiskoForm(request.POST, instance=stanowisko)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f'Stanowisko „{stanowisko.nazwa}" zostało zaktualizowane.')
+            return redirect('stanowiska:podglad', pk=stanowisko.pk)
+    else:
+        form = StanowiskoForm(instance=stanowisko)
+    return render(request, 'stanowiska/formularz.html', {'form': form, 'stanowisko': stanowisko, 'tryb': 'edycja'})
+
+
+@tylko_hr
+def usun(request, pk):
+    stanowisko = get_object_or_404(Stanowisko, pk=pk)
+    if request.method == 'POST':
+        nazwa = stanowisko.nazwa
+        stanowisko.delete()
+        messages.success(request, f'Stanowisko „{nazwa}" zostało usunięte.')
+        return redirect('stanowiska:lista')
+    return redirect('stanowiska:edytuj', pk=pk)

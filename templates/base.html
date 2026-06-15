@@ -217,6 +217,14 @@
     </div>
     {% endif %}
     {% endwith %}
+
+    <!-- Pomoc -->
+    <div class="sidebar-section" style="margin-top:auto">
+      <div class="sidebar-section-label">Pomoc</div>
+      <button class="sidebar-link w-100 border-0 text-start" style="background:none" data-bs-toggle="offcanvas" data-bs-target="#offcanvasInstrukcja" data-label="Instrukcja obsługi">
+        <i class="bi bi-question-circle-fill"></i><span>Instrukcja obsługi</span>
+      </button>
+    </div>
   </nav>
   {% endif %}
 
@@ -237,6 +245,155 @@
 </div>
 
 <div id="sidebar-tooltip"></div>
+
+<!-- ===== OFFCANVAS: Instrukcja obsługi ===== -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="offcanvasInstrukcja" style="width:min(680px,96vw)">
+  <div class="offcanvas-header border-bottom" style="background:#1a1d23; color:#c9d1d9">
+    <h5 class="offcanvas-title"><i class="bi bi-question-circle-fill me-2"></i>Instrukcja obsługi</h5>
+    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas"></button>
+  </div>
+  <div class="offcanvas-body" style="font-size:.9rem; overflow-y:auto">
+
+    <nav class="mb-4 p-3 rounded" style="background:#f8f9fa; border:1px solid #dee2e6">
+      <p class="fw-bold mb-2 small text-muted text-uppercase" style="letter-spacing:.06em">Spis treści</p>
+      <ol class="mb-0 ps-3 small">
+        <li><a href="#instr-1" class="text-decoration-none">Logowanie i wylogowanie</a></li>
+        <li><a href="#instr-2" class="text-decoration-none">Nawigacja po systemie</a></li>
+        <li><a href="#instr-3" class="text-decoration-none">Lista pracowników</a></li>
+        <li><a href="#instr-4" class="text-decoration-none">Import pracowników z pliku</a></li>
+        <li><a href="#instr-5" class="text-decoration-none">Stanowiska</a></li>
+      </ol>
+    </nav>
+
+    <hr>
+
+    <h5 id="instr-1">1. Logowanie i wylogowanie</h5>
+    <h6 class="text-muted mt-3">Logowanie</h6>
+    <ol>
+      <li>Otwórz przeglądarkę i przejdź pod adres aplikacji (np. <code>http://127.0.0.1:8000/</code>).</li>
+      <li>Zostaniesz automatycznie przekierowany na stronę logowania.</li>
+      <li>Wpisz <strong>login</strong> i <strong>hasło</strong>, następnie kliknij przycisk <strong>Zaloguj</strong>.</li>
+    </ol>
+    <p>Po poprawnym zalogowaniu system przeniesie Cię na listę pracowników.</p>
+    <h6 class="text-muted mt-3">Wylogowanie</h6>
+    <ol>
+      <li>Kliknij ikonę użytkownika w prawym górnym rogu ekranu (lub swoje imię i nazwisko).</li>
+      <li>Z rozwiniętego menu wybierz <strong>Wyloguj</strong> (czerwony przycisk).</li>
+    </ol>
+
+    <hr>
+
+    <h5 id="instr-2">2. Nawigacja po systemie</h5>
+    <p>Po lewej stronie ekranu znajduje się <strong>boczne menu nawigacyjne</strong> (sidebar). Zawiera ono wszystkie dostępne sekcje systemu.</p>
+    <h6 class="text-muted mt-3">Sekcje menu</h6>
+    <table class="table table-sm table-bordered">
+      <thead class="table-light"><tr><th>Sekcja</th><th>Co zawiera</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Pracownicy</strong></td><td>Lista pracowników, Import z pliku</td></tr>
+        <tr><td><strong>Stanowiska</strong></td><td>Lista stanowisk magazynowych</td></tr>
+        <tr><td><strong>Przydziały</strong></td><td>Dashboard obsady, Historia przydziałów</td></tr>
+        <tr><td><strong>Raporty</strong></td><td>Raport obsady w formacie Excel</td></tr>
+      </tbody>
+    </table>
+    <h6 class="text-muted mt-3">Zwijanie menu</h6>
+    <p>Menu boczne można zwinąć, aby uzyskać więcej miejsca na ekranie. Kliknij przycisk <strong>Zwiń</strong> u góry menu — menu zwęzi się do samych ikon. Aby je rozwinąć, kliknij ponownie. Stan zwinięcia/rozwinięcia jest zapamiętywany między sesjami.</p>
+
+    <hr>
+
+    <h5 id="instr-3">3. Lista pracowników</h5>
+    <p class="text-muted small">Ścieżka: Menu boczne → <strong>Pracownicy</strong> → <strong>Lista pracowników</strong></p>
+    <h6 class="text-muted mt-3">Co widać na liście</h6>
+    <p>Pracownicy wyświetlani są jako karty. Każda karta zawiera:</p>
+    <ul>
+      <li><strong>Avatar</strong> — kolorowy okrąg z inicjałami pracownika</li>
+      <li><strong>Imię i nazwisko</strong></li>
+      <li><strong>Liczba stanowisk</strong> w portfolio pracownika</li>
+      <li><strong>Kafelki stanowisk</strong> — jedno pole na każde stanowisko z portfolio:
+        <ul>
+          <li>Nazwa stanowiska</li>
+          <li>Zielony badge <strong>100%</strong> — oznacza, że pracownik zna to stanowisko</li>
+          <li>Zielony pasek wypełniony do końca</li>
+        </ul>
+      </li>
+    </ul>
+    <p>Jeśli pracownik nie ma przypisanego żadnego stanowiska, karta zawiera komunikat <em>"Brak przypisanych stanowisk"</em>.</p>
+    <h6 class="text-muted mt-3">Tooltip — szczegóły stanowiska</h6>
+    <p>Najedź kursorem myszy na kafelek stanowiska — pojawi się ciemna dymka z podstawowym profilem tego stanowiska. Dymka znika, gdy odsuniesz kursor.</p>
+    <h6 class="text-muted mt-3">Wyszukiwanie pracownika</h6>
+    <p>W pasku nad kartami znajduje się pole tekstowe <strong>Szukaj po imieniu lub nazwisku</strong>. Wpisz dowolną część imienia lub nazwiska — karty filtrują się na bieżąco, bez przeładowania strony.</p>
+    <h6 class="text-muted mt-3">Filtrowanie po stanowisku</h6>
+    <p>Obok pola wyszukiwania znajduje się lista rozwijana <strong>Stanowisko</strong>. Wybierz konkretne stanowisko, aby zobaczyć tylko pracowników, którzy mają je w swoim portfolio. Opcja <em>Wszystkie stanowiska</em> przywraca pełną listę.</p>
+    <h6 class="text-muted mt-3">Sortowanie</h6>
+    <p>Trzecia lista rozwijana pozwala posortować widoczne karty: <strong>Alfabetycznie A–Z</strong> lub <strong>Z–A</strong> (po nazwisku, a przy tym samym nazwisku — po imieniu).</p>
+    <h6 class="text-muted mt-3">Licznik wyników</h6>
+    <p>W prawym rogu paska narzędzi wyświetlana jest aktualna liczba widocznych kart. Liczba zmienia się automatycznie po zastosowaniu filtrów.</p>
+
+    <hr>
+
+    <h5 id="instr-4">4. Import pracowników z pliku</h5>
+    <p class="text-muted small">Ścieżka: Menu boczne → <strong>Pracownicy</strong> → <strong>Import (Excel / CSV)</strong></p>
+    <p>Import pozwala załadować listę pracowników z zewnętrznego pliku. System używa sztucznej inteligencji (Claude AI), która samodzielnie rozpoznaje kolumny z danymi — nie musisz dostosowywać formatu pliku do żadnego szablonu.</p>
+    <h6 class="text-muted mt-3">Obsługiwane formaty plików</h6>
+    <ul>
+      <li><strong>Excel</strong> — pliki <code>.xlsx</code> (Microsoft Excel 2007 i nowsze)</li>
+      <li><strong>CSV</strong> — pliki <code>.csv</code> z separatorem przecinka lub średnika, kodowanie UTF-8</li>
+    </ul>
+    <h6 class="text-muted mt-3">Jak powinien wyglądać plik</h6>
+    <p>Plik powinien zawierać co najmniej trzy rodzaje danych dla każdego pracownika: <strong>Imię</strong>, <strong>Nazwisko</strong> i <strong>Stanowiska</strong> — nazwy stanowisk, które pracownik potrafi obsługiwać. Kolumny mogą mieć dowolne nazwy i stać w dowolnej kolejności. AI rozpozna je automatycznie.</p>
+    <h6 class="text-muted mt-3">Obsługiwane nazwy stanowisk</h6>
+    <p>System rozpoznaje następujące stanowiska (AI dopasuje je nawet przy skrócie lub nieco innej pisowni):</p>
+    <div class="d-flex flex-wrap gap-1 mb-2">
+      <span class="badge bg-secondary">PTS 4</span>
+      <span class="badge bg-secondary">PTS 10</span>
+      <span class="badge bg-secondary">Sorter - Wrzucanie</span>
+      <span class="badge bg-secondary">Sorter - Zbieranie</span>
+      <span class="badge bg-secondary">AA</span>
+      <span class="badge bg-secondary">Wózek - Czołówka</span>
+      <span class="badge bg-secondary">Wózek - Retrack</span>
+      <span class="badge bg-secondary">Wózek - Piesek</span>
+    </div>
+    <p class="small text-muted">Inne wartości są ignorowane — nie powodują błędu, po prostu nie zostaną zapisane.</p>
+    <h6 class="text-muted mt-3">Jak przeprowadzić import — krok po kroku</h6>
+    <ol>
+      <li>Przejdź do strony <strong>Import (Excel / CSV)</strong>.</li>
+      <li>Kliknij pole <strong>"Wybierz plik"</strong> i wskaż plik <code>.xlsx</code> lub <code>.csv</code>.</li>
+      <li>Kliknij przycisk <strong>Importuj</strong>.</li>
+      <li>Pojawi się okno z animowanym kółkiem ładowania. Poczekaj — nie zamykaj przeglądarki ani nie odświeżaj strony.</li>
+      <li>Po zakończeniu zostaniesz automatycznie przeniesiony na listę pracowników.</li>
+      <li>Na górze strony pojawi się zielony komunikat potwierdzający.</li>
+    </ol>
+    <h6 class="text-muted mt-3">Aktualizacja istniejących pracowników</h6>
+    <p>Jeśli pracownik o tym samym imieniu i nazwisku już istnieje w bazie, jego dane <strong>zostaną zaktualizowane</strong> — system nie stworzy duplikatu. Nowy import zastępuje poprzednią listę stanowisk dla tego pracownika.</p>
+    <h6 class="text-muted mt-3">Co zrobić w przypadku błędu</h6>
+    <table class="table table-sm table-bordered">
+      <thead class="table-light"><tr><th>Komunikat</th><th>Co zrobić</th></tr></thead>
+      <tbody>
+        <tr><td><em>Nieprawidłowy format pliku</em></td><td>Sprawdź, czy plik ma rozszerzenie <code>.xlsx</code> lub <code>.csv</code></td></tr>
+        <tr><td><em>Błąd odczytu pliku Excel</em></td><td>Plik może być uszkodzony — spróbuj zapisać go ponownie w Excelu</td></tr>
+        <tr><td><em>Błąd API Anthropic</em></td><td>Problem z połączeniem do AI — skontaktuj się z administratorem</td></tr>
+        <tr><td><em>Nie można sparsować odpowiedzi AI jako JSON</em></td><td>AI zwróciła nieoczekiwaną odpowiedź — spróbuj ponownie</td></tr>
+      </tbody>
+    </table>
+
+    <hr>
+
+    <h5 id="instr-5">5. Stanowiska</h5>
+    <p class="text-muted small">Ścieżka: Menu boczne → <strong>Stanowiska</strong> → <strong>Lista stanowisk</strong></p>
+    <h6 class="text-muted mt-3">Lista stanowisk</h6>
+    <p>Widok przedstawia karty wszystkich aktywnych stanowisk magazynowych. Każda karta zawiera:</p>
+    <ul>
+      <li><strong>Nazwa</strong> stanowiska i jego status (Aktywne / Nieaktywne)</li>
+      <li><strong>Pasek obsady</strong> — <span class="badge bg-success">zielony</span> &lt; 70%, <span class="badge bg-warning text-dark">żółty</span> 70–90%, <span class="badge bg-danger">czerwony</span> &gt; 90%</li>
+      <li><strong>Tabela parametrów</strong> — wymagana siła, poziom chodzenia, siedzenia, powtarzalność, praca na zewnątrz</li>
+      <li>Przycisk <strong>Szczegóły i obsada</strong> prowadzący do widoku szczegółowego</li>
+    </ul>
+    <h6 class="text-muted mt-3">Szczegóły stanowiska</h6>
+    <p>Po kliknięciu <strong>Szczegóły i obsada</strong> otwiera się widok szczegółowy stanowiska z pełną listą wymagań fizycznych oraz tabelą pracowników, którzy mają to stanowisko w swoim portfolio.</p>
+
+    <hr>
+    <p class="text-muted small text-end">Instrukcja obsługi — System Magazynowy v1.1 | 2026-05-26</p>
+  </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
