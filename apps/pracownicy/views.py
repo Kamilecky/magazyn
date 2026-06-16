@@ -555,5 +555,10 @@ def usun_wszystkich(request):
     if request.method != 'POST':
         return redirect('pracownicy:lista')
     liczba, _ = Pracownik.objects.all().delete()
-    messages.success(request, f'Usunięto wszystkich pracowników ({liczba}).')
+    PlanZmiany.objects.update(dopasowanie={}, dopasowane_at=None)
+    messages.success(
+        request,
+        f'Usunięto wszystkich pracowników ({liczba}). '
+        f'Wyczyszczono również dopasowania we wszystkich planach zmian.'
+    )
     return redirect('pracownicy:lista')
