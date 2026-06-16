@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     'apps.przydzialy',
     'apps.raporty',
     'apps.pracownicy',
+    'apps.notatki',
 ]
 
 MIDDLEWARE = [

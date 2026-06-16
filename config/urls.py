@@ -13,6 +13,7 @@ path('przydzialy/', include('apps.przydzialy.urls')),
     path('raporty/', include('apps.raporty.urls')),
     path('stanowiska/', include('apps.stanowiska.urls')),
     path('pracownicy/', include('apps.pracownicy.urls')),
+    path('notatki/', include('apps.notatki.urls')),
 ]
 
 handler404 = 'config.views.error_404'

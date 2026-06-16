@@ -224,6 +224,9 @@
       <button class="sidebar-link w-100 border-0 text-start" style="background:none" data-bs-toggle="offcanvas" data-bs-target="#offcanvasInstrukcja" data-label="Instrukcja obsługi">
         <i class="bi bi-question-circle-fill"></i><span>Instrukcja obsługi</span>
       </button>
+      <button class="sidebar-link w-100 border-0 text-start" style="background:none" data-bs-toggle="offcanvas" data-bs-target="#offcanvasNotatki" data-label="Notatki">
+        <i class="bi bi-journal-text"></i><span>Notatki</span>
+      </button>
     </div>
   </nav>
   {% endif %}
@@ -395,6 +398,27 @@
   </div>
 </div>
 
+<!-- ===== OFFCANVAS: Notatki ===== -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="offcanvasNotatki" style="width:420px">
+  <div class="offcanvas-header border-bottom" style="background:#1a1d23; color:#c9d1d9">
+    <h5 class="offcanvas-title"><i class="bi bi-journal-text me-2"></i>Notatki</h5>
+    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas"></button>
+  </div>
+  <div class="offcanvas-body d-flex flex-column p-0">
+    <div class="p-3 border-bottom">
+      <textarea id="notatkaTresc" class="form-control form-control-sm mb-2" rows="3" placeholder="Wpisz sugestię lub notatkę…"></textarea>
+      <button type="button" class="btn btn-primary btn-sm w-100" id="notatkaDodajBtn">
+        <i class="bi bi-plus-lg me-1"></i>Dodaj notatkę
+      </button>
+    </div>
+    <div id="notatkiLista" class="flex-grow-1" style="overflow-y:auto">
+      <div class="text-center py-5">
+        <div class="spinner-border spinner-border-sm text-secondary" role="status"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 // ===== SIDEBAR: zwijanie z pamięcią w localStorage =====
@@ -439,6 +463,52 @@
       stt.style.left = (rect.right + 10) + 'px';
     });
     link.addEventListener('mouseleave', () => { stt.style.display = 'none'; });
+  });
+})();
+
+// ===== NOTATKI: panel boczny =====
+(function() {
+  const offEl = document.getElementById('offcanvasNotatki');
+  if (!offEl) return;
+  const listaEl  = document.getElementById('notatkiLista');
+  const trescEl  = document.getElementById('notatkaTresc');
+  const dodajBtn = document.getElementById('notatkaDodajBtn');
+
+  function getCsrf() {
+    const m = document.cookie.match(/csrftoken=([^;]+)/);
+    return m ? m[1] : '';
+  }
+
+  function odswiez() {
+    fetch('/notatki/')
+      .then(r => r.json())
+      .then(data => { listaEl.innerHTML = data.html; })
+      .catch(() => { listaEl.innerHTML = '<div class="text-center text-danger py-4">Błąd ładowania notatek.</div>'; });
+  }
+
+  offEl.addEventListener('show.bs.offcanvas', odswiez);
+
+  dodajBtn.addEventListener('click', function() {
+    const tresc = trescEl.value.trim();
+    if (!tresc) return;
+    fetch('/notatki/dodaj/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': getCsrf() },
+      body: 'tresc=' + encodeURIComponent(tresc),
+    })
+      .then(r => r.json())
+      .then(data => { listaEl.innerHTML = data.html; trescEl.value = ''; trescEl.focus(); });
+  });
+
+  listaEl.addEventListener('click', function(e) {
+    const btn = e.target.closest('[data-usun-notatka]');
+    if (!btn) return;
+    fetch(`/notatki/${btn.dataset.usunNotatka}/usun/`, {
+      method: 'POST',
+      headers: { 'X-CSRFToken': getCsrf() },
+    })
+      .then(r => r.json())
+      .then(data => { listaEl.innerHTML = data.html; });
   });
 })();
 </script>
