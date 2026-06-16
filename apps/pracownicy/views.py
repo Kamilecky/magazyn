@@ -292,6 +292,7 @@ def plany_lista(request):
     plany = []
     for plan in plany_raw:
         stanowiska_dane = []
+        total_dopasowanych = 0
         for wpis in (plan.dane_raw or []):
             stanowisko = wpis.get('stanowisko', '')
             obsada = wpis.get('obsada', 0)
@@ -299,16 +300,23 @@ def plany_lista(request):
             workers = []
             for w in raw_workers:
                 imie, nazwisko = w.get('imie', ''), w.get('nazwisko', '')
+                if (imie, nazwisko) not in lookup:
+                    continue  # pracownik usunięty z bazy — ignoruj nieaktualne dopasowanie
                 # użyj doswiadczenie zapisanego w dopasowaniu; fallback do bazy
                 dosw = w.get('doswiadczenie') or lookup.get((imie, nazwisko), [])
                 workers.append({'imie': imie, 'nazwisko': nazwisko, 'doswiadczenie': dosw})
+            total_dopasowanych += len(workers)
             stanowiska_dane.append({
                 'stanowisko': stanowisko,
                 'obsada': obsada,
                 'workers': workers,
                 'workers_json': json.dumps(workers, ensure_ascii=False),
             })
-        plany.append({'plan': plan, 'stanowiska': stanowiska_dane})
+        plany.append({
+            'plan': plan,
+            'stanowiska': stanowiska_dane,
+            'total_dopasowanych': total_dopasowanych,
+        })
     return render(request, 'pracownicy/plany_lista.html', {'plany': plany})
 
 

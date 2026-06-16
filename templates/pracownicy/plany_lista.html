@@ -79,10 +79,10 @@
         </div>
         {% endif %}
 
-        {% if plan.dopasowane_at %}
+        {% if plan.dopasowane_at and item.total_dopasowanych > 0 %}
         <div class="small text-muted">
           <i class="bi bi-check-circle-fill text-success"></i>
-          Dopasowano {{ plan.total_dopasowanych }} pracowników
+          Dopasowano {{ item.total_dopasowanych }} pracowników
           ({{ plan.dopasowane_at|date:"d.m.Y H:i" }})
         </div>
         {% endif %}

@@ -3,7 +3,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from .models import Stanowisko
 from .forms import StanowiskoForm
-from apps.pracownicy.models import PlanZmiany
+from apps.pracownicy.models import PlanZmiany, Pracownik
 
 
 def _kolor(proc):
@@ -12,15 +12,19 @@ def _kolor(proc):
 
 def _pracownicy_ze_stanowiska(stanowisko_nazwa):
     """Zwraca listę pracowników dopasowanych do stanowiska z najnowszych planów."""
+    istniejacy = set(Pracownik.objects.values_list('imie', 'nazwisko'))
     wyniki = []
     for zmiana in ('poranny', 'popobudniowy', 'nocny'):
         plan = PlanZmiany.objects.filter(zmiana=zmiana).first()
         if not plan or not plan.dopasowanie:
             continue
         for p in (plan.dopasowanie.get(stanowisko_nazwa) or []):
+            imie, nazwisko = p.get('imie', ''), p.get('nazwisko', '')
+            if (imie, nazwisko) not in istniejacy:
+                continue  # pracownik usunięty z bazy — ignoruj nieaktualne dopasowanie
             wyniki.append({
-                'imie': p.get('imie', ''),
-                'nazwisko': p.get('nazwisko', ''),
+                'imie': imie,
+                'nazwisko': nazwisko,
                 'zmiana': plan.get_zmiana_display(),
                 'dopasowane_at': plan.dopasowane_at,
             })

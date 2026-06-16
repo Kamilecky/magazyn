@@ -1,7 +1,7 @@
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from apps.stanowiska.models import Stanowisko
-from apps.pracownicy.models import PlanZmiany
+from apps.pracownicy.models import PlanZmiany, Pracownik
 from .models import AuditLog
 
 
@@ -14,18 +14,21 @@ def _log(request, akcja, rekrut=None):
     )
 
 
-def _obsada_ze_stanowiska(stanowisko_nazwa):
+def _obsada_ze_stanowiska(stanowisko_nazwa, istniejacy):
     aktualnie = 0
     pracownicy = []
     for zmiana in ('poranny', 'popobudniowy', 'nocny'):
         plan = PlanZmiany.objects.filter(zmiana=zmiana).first()
         if plan and plan.dopasowanie:
             osoby = plan.dopasowanie.get(stanowisko_nazwa) or []
-            aktualnie += len(osoby)
             for p in osoby:
+                imie, nazwisko = p.get('imie', ''), p.get('nazwisko', '')
+                if (imie, nazwisko) not in istniejacy:
+                    continue  # pracownik usunięty z bazy — ignoruj nieaktualne dopasowanie
+                aktualnie += 1
                 pracownicy.append({
-                    'imie': p.get('imie', ''),
-                    'nazwisko': p.get('nazwisko', ''),
+                    'imie': imie,
+                    'nazwisko': nazwisko,
                     'zmiana': plan.get_zmiana_display(),
                 })
     pracownicy.sort(key=lambda p: (p['nazwisko'], p['imie']))
@@ -35,9 +38,10 @@ def _obsada_ze_stanowiska(stanowisko_nazwa):
 @login_required
 def dashboard(request):
     stanowiska = Stanowisko.objects.filter(aktywne=True)
+    istniejacy = set(Pracownik.objects.values_list('imie', 'nazwisko'))
     obsada = []
     for s in stanowiska:
-        aktualnie, pracownicy = _obsada_ze_stanowiska(s.nazwa)
+        aktualnie, pracownicy = _obsada_ze_stanowiska(s.nazwa, istniejacy)
         proc = min(int(aktualnie / s.max_pracownikow * 100) if s.max_pracownikow else 0, 100)
         obsada.append({
             'stanowisko': s,
