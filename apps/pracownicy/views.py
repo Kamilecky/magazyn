@@ -73,7 +73,13 @@ def lista(request):
           .prefetch_related(
               Prefetch('absencje',
                        queryset=AbsencjaPracownika.objects.order_by('data'),
-                       to_attr='absencje_lista')
+                       to_attr='absencje_lista'),
+              Prefetch('kompetencje',
+                       queryset=KompetencjaPracownika.objects
+                           .filter(wynik__gt=0)
+                           .select_related('aktywnosc')
+                           .order_by('-wynik'),
+                       to_attr='kompetencje_lista'),
           )
           .order_by(
               F('nr_len').asc(nulls_last=True),
