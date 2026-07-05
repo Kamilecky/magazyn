@@ -12,6 +12,7 @@ from datetime import date, datetime
 import openpyxl
 
 ARKUSZE_DZIALY = {
+    'Struktura IN': 'Inbound',
     'Struktura IB': 'Inbound',
     'Struktura OB': 'Outbound',
     'Struktura FF': 'Fulfilment',
@@ -155,6 +156,9 @@ def _parsuj_arkusz(ws, sheet_name: str, typy_absencji: set) -> tuple[dict, list,
                     p_data[field] = _parse_date(raw)
                 else:
                     p_data[field] = _safe_str(raw)
+        if not p_data.get('dzial'):
+            p_data['dzial'] = ARKUSZE_DZIALY.get(sheet_name, '')
+        p_data['_sheet'] = sheet_name
         pracownicy[key] = p_data
 
         for ci, data_iso in date_cols.items():

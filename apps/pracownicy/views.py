@@ -8,7 +8,8 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.db.models import Count, Exists, OuterRef, Prefetch, Q
+from django.db.models import Count, Exists, F, OuterRef, Prefetch, Q
+from django.db.models.functions import Length
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
@@ -48,38 +49,71 @@ def _page_range(page_obj, paginator):
 
 # ── Pracownicy ─────────────────────────────────────────────────────────────────
 
+_ARKUSZ_KOLEJNOSC = [
+    'Struktura IN', 'Struktura IB', 'Struktura OB', 'Struktura FF', 'Struktura ZW', 'Struktura PR',
+]
+_ARKUSZ_SKROT = {
+    'Struktura IN': 'IN', 'Struktura IB': 'IB', 'Struktura OB': 'OB',
+    'Struktura FF': 'FF', 'Struktura ZW': 'ZW', 'Struktura PR': 'PR',
+}
+
+
 @login_required
 def lista(request):
     q         = request.GET.get('q', '').strip()
-    dzial_q   = request.GET.get('dzial', '').strip()
+    arkusz_q  = request.GET.get('arkusz', '').strip()
     nieobecni = request.GET.get('nieobecni', '') == '1'
 
     qs = (Pracownik.objects
           .annotate(
               liczba_kompetencji=Count('kompetencje', distinct=True),
               liczba_absencji=Count('absencje', distinct=True),
+              nr_len=Length('nr_ewidencyjny'),
           )
           .prefetch_related(
               Prefetch('absencje',
                        queryset=AbsencjaPracownika.objects.order_by('data'),
                        to_attr='absencje_lista')
           )
-          .order_by('nazwisko', 'imie'))
+          .order_by(
+              F('nr_len').asc(nulls_last=True),
+              F('nr_ewidencyjny').asc(nulls_last=True),
+              'nazwisko', 'imie',
+          ))
 
     if q:
-        from django.db.models import Q
         qs = qs.filter(Q(nazwisko__icontains=q) | Q(imie__icontains=q))
-    if dzial_q:
-        qs = qs.filter(dzial__iexact=dzial_q)
+    if arkusz_q:
+        qs = qs.filter(arkusz=arkusz_q)
     if nieobecni:
         qs = qs.filter(liczba_absencji__gt=0)
 
-    dzialy = list(
-        Pracownik.objects.values_list('dzial', flat=True)
-        .exclude(dzial='').distinct().order_by('dzial')
-    )
+    # Zakładki arkuszy z liczbą pracowników
+    base_qs = Pracownik.objects
+    if q:
+        base_qs = base_qs.filter(Q(nazwisko__icontains=q) | Q(imie__icontains=q))
+    if nieobecni:
+        base_qs = base_qs.annotate(la=Count('absencje', distinct=True)).filter(la__gt=0)
+
+    arkusze_counts = {
+        row['arkusz']: row['n']
+        for row in base_qs.values('arkusz').annotate(n=Count('id'))
+    }
+    arkusze_tabs = []
+    for ark in _ARKUSZ_KOLEJNOSC:
+        if ark in arkusze_counts:
+            arkusze_tabs.append({
+                'value': ark,
+                'skrot': _ARKUSZ_SKROT.get(ark, ark),
+                'count': arkusze_counts[ark],
+            })
+    # Pozostałe arkusze (inne niż Struktura IB/OB/FF/ZW/PR)
+    for ark, cnt in arkusze_counts.items():
+        if ark not in _ARKUSZ_KOLEJNOSC:
+            arkusze_tabs.append({'value': ark, 'skrot': ark or 'Inne', 'count': cnt})
+
     from urllib.parse import urlencode
-    _fp = {k: v for k, v in [('q', q), ('dzial', dzial_q), ('nieobecni', '1' if nieobecni else '')] if v}
+    _fp = {k: v for k, v in [('q', q), ('arkusz', arkusz_q), ('nieobecni', '1' if nieobecni else '')] if v}
     filter_params = urlencode(_fp)
 
     paginator = Paginator(qs, 50)
@@ -88,10 +122,10 @@ def lista(request):
     return render(request, 'pracownicy/lista.html', {
         'pracownicy': page_obj,
         'q': q,
-        'dzial_q': dzial_q,
+        'arkusz_q': arkusz_q,
         'nieobecni': nieobecni,
         'filter_params': filter_params,
-        'dzialy': dzialy,
+        'arkusze_tabs': arkusze_tabs,
         'page_range': pr,
         'pr_start': pr_start,
         'pr_end': pr_end,
@@ -774,7 +808,8 @@ def import_pracownicy(request):
             p_list, k_dict, ostr = parsuj_kompetencje(plik_kompetencje)
             for p in p_list:
                 key = (p['nazwisko'], p['imie'])
-                pracownicy_dict[key] = {**pracownicy_dict.get(key, {}), **p}
+                p_bez_dzialu = {k: v for k, v in p.items() if k != 'dzial'}
+                pracownicy_dict[key] = {**pracownicy_dict.get(key, {}), **p_bez_dzialu}
             for key, komp in k_dict.items():
                 kompetencje_dict.setdefault(key, []).extend(komp)
             ostrzezenia.extend(ostr)
@@ -820,6 +855,41 @@ def import_pracownicy(request):
         'total_absencji': len(absencje_list),
     }
 
+    # Grupowanie per arkusz do podglądu w modalu
+    _SHEET_ORDER = ['Struktura IN', 'Struktura IB', 'Struktura OB', 'Struktura FF', 'Struktura ZW', 'Struktura PR']
+    _SHEET_LABEL = {
+        'Struktura IN': 'IN — Inbound',
+        'Struktura IB': 'IB — Inbound',
+        'Struktura OB': 'OB — Outbound',
+        'Struktura FF': 'FF — Fulfilment',
+        'Struktura ZW': 'ZW — Zwroty',
+        'Struktura PR': 'PR — Prasa',
+    }
+    arkusze: dict[str, list] = {}
+    for p in pracownicy_list:
+        sheet = p.get('_sheet') or 'Tylko KOMPETENCJE'
+        arkusze.setdefault(sheet, []).append(p)
+
+    podglad_arkusze = []
+    seen = set()
+    for sh in _SHEET_ORDER:
+        if sh in arkusze:
+            podglad_arkusze.append({
+                'key': sh.replace(' ', '_'),
+                'label': _SHEET_LABEL.get(sh, sh),
+                'count': len(arkusze[sh]),
+                'pracownicy': arkusze[sh][:40],
+            })
+            seen.add(sh)
+    for sh, workers in arkusze.items():
+        if sh not in seen:
+            podglad_arkusze.append({
+                'key': sh.replace(' ', '_'),
+                'label': sh,
+                'count': len(workers),
+                'pracownicy': workers[:40],
+            })
+
     data = {
         'pracownicy': pracownicy_list,
         'absencje': absencje_list,
@@ -833,7 +903,7 @@ def import_pracownicy(request):
     )
 
     return render(request, 'pracownicy/import_pracownicy.html', {
-        'podglad': pracownicy_list[:20],
+        'podglad_arkusze': podglad_arkusze,
         'stats': stats,
         'ostrzezenia': ostrzezenia,
         'tmp_uuid': tmp_id,
@@ -870,6 +940,7 @@ def _zapisz_pracownikow(data: dict) -> None:
             przelozony=p.get('przelozony', ''),
             komentarz=p.get('komentarz', ''),
             data_zatrudnienia=dt,
+            arkusz=p.get('_sheet', ''),
         ))
 
     created = Pracownik.objects.bulk_create(nowi)

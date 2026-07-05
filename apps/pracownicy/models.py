@@ -64,6 +64,7 @@ class Pracownik(models.Model):
     przelozony = models.CharField(max_length=100, blank=True, verbose_name='Przełożony')
     komentarz = models.TextField(blank=True, verbose_name='Komentarz')
     data_zatrudnienia = models.DateField(null=True, blank=True, verbose_name='Data zatrudnienia')
+    arkusz = models.CharField(max_length=50, blank=True, verbose_name='Arkusz źródłowy')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

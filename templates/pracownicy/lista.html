@@ -16,110 +16,112 @@
   </div>
 </div>
 
-<!-- Pasek wyszukiwania -->
-<form method="get" id="formFiltr" class="card mb-3">
+<!-- Zakładki arkuszy -->
+{% if arkusze_tabs %}
+<ul class="nav nav-tabs mb-0" id="tabArkusze" role="tablist">
+  <li class="nav-item">
+    <a class="nav-link {% if not arkusz_q %}active{% endif %}"
+       href="?{% if q %}q={{ q }}&{% endif %}{% if nieobecni %}nieobecni=1&{% endif %}">
+      Wszystkie
+      <span class="badge bg-secondary fw-normal ms-1">{{ pracownicy.paginator.count }}</span>
+    </a>
+  </li>
+  {% for ark in arkusze_tabs %}
+  <li class="nav-item">
+    <a class="nav-link {% if arkusz_q == ark.value %}active{% endif %}"
+       href="?arkusz={{ ark.value|urlencode }}{% if q %}&q={{ q }}{% endif %}{% if nieobecni %}&nieobecni=1{% endif %}">
+      {{ ark.skrot }}
+      <span class="badge fw-normal ms-1 {% if arkusz_q == ark.value %}bg-primary{% else %}bg-secondary{% endif %}">{{ ark.count }}</span>
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+<!-- Pasek filtrów -->
+<form method="get" id="formFiltr" class="card mb-3 {% if arkusze_tabs %}rounded-top-0 border-top-0{% endif %}">
   <div class="card-body py-2">
     <div class="row g-2 align-items-center">
-      <div class="col-md-4">
+      <div class="col-md-5">
         <input type="text" name="q" id="szukaj" class="form-control form-control-sm"
                placeholder="Szukaj po imieniu lub nazwisku…"
                value="{{ q }}" autocomplete="off">
+        {% if arkusz_q %}
+        <input type="hidden" name="arkusz" value="{{ arkusz_q }}">
+        {% endif %}
       </div>
       <div class="col-md-3">
-        <select name="dzial" id="filtrDzial" class="form-select form-select-sm">
-          <option value="">Wszystkie działy</option>
-          {% for dz in dzialy %}
-          <option value="{{ dz }}" {% if dz == dzial_q %}selected{% endif %}>{{ dz }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-2">
-        <select id="sortuj" class="form-select form-select-sm">
-          <option value="az">A–Z</option>
-          <option value="za">Z–A</option>
-        </select>
-      </div>
-      <div class="col-md-2">
         <div class="form-check form-switch pt-1">
           <input class="form-check-input" type="checkbox" name="nieobecni" id="filtrNieobecni"
                  value="1" {% if nieobecni %}checked{% endif %}>
-          <label class="form-check-label small" for="filtrNieobecni">Tylko nieobecni</label>
+          <label class="form-check-label small" for="filtrNieobecni">Tylko z absencjami</label>
         </div>
       </div>
-      <div class="col-md-1 text-end">
-        <span class="text-muted small fw-bold">{{ pracownicy.paginator.count }}</span>
+      <div class="col-md-4 text-end">
+        <span class="text-muted small fw-bold">{{ pracownicy.paginator.count }} pracowników</span>
+        {% if q or arkusz_q or nieobecni %}
+        <a href="{% url 'pracownicy:lista' %}" class="btn btn-outline-secondary btn-sm ms-2 py-0 px-2">
+          <i class="bi bi-x"></i> Wyczyść filtr
+        </a>
+        {% endif %}
       </div>
     </div>
-    {% if q or dzial_q or nieobecni %}
-    <div class="mt-2 d-flex align-items-center gap-2">
-      <small class="text-muted">Filtr aktywny:</small>
-      {% if q %}<span class="badge bg-primary">„{{ q }}"</span>{% endif %}
-      {% if dzial_q %}<span class="badge bg-secondary">{{ dzial_q }}</span>{% endif %}
-      {% if nieobecni %}<span class="badge bg-warning text-dark">nieobecni</span>{% endif %}
-      <a href="{% url 'pracownicy:lista' %}" class="btn btn-outline-secondary btn-sm py-0 px-2">
-        <i class="bi bi-x"></i> Wyczyść
-      </a>
-    </div>
-    {% endif %}
   </div>
 </form>
 
 {% if pracownicy %}
 <div class="table-responsive">
-  <table class="table table-hover align-middle" id="tablePracownicy">
-    <thead class="table-dark">
+  <table class="table table-hover align-middle table-bordered table-sm" id="tablePracownicy"
+         style="font-size:.83rem">
+    <thead class="table-light">
       <tr>
-        <th style="width:36px"></th>
-        <th>Nazwisko i imię</th>
+        <th class="ps-2" style="width:42px">Nr ewid.</th>
+        <th>Nazwisko</th>
+        <th>Imię</th>
+        <th>Data zatr.</th>
+        <th>Stanowisko</th>
+        <th>Strefa</th>
         <th>Dział</th>
         <th>Zmiana</th>
-        <th>Gr. zmiany</th>
-        <th>Stanowisko</th>
+        <th>Gr. zm.</th>
+        <th>Przełożony</th>
         <th>Absencje</th>
-        <th class="text-end">Kompetencji</th>
-        <th style="width:50px"></th>
+        <th class="text-end">Komp.</th>
+        <th style="width:36px"></th>
       </tr>
     </thead>
     <tbody>
       {% for p in pracownicy %}
-      <tr class="karta-pracownika"
-          data-imie="{{ p.imie|lower }}"
-          data-nazwisko="{{ p.nazwisko|lower }}"
-          data-dzial="{{ p.dzial|lower }}"
-          data-absencja="{% if p.liczba_absencji %}tak{% else %}nie{% endif %}"
-          data-sortname="{{ p.nazwisko|lower }} {{ p.imie|lower }}">
-        <td>
-          <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold"
-               style="width:32px;height:32px;font-size:.8rem;flex-shrink:0">
-            {{ p.inicjaly }}
-          </div>
+      <tr data-nazwisko="{{ p.nazwisko|lower }}" data-imie="{{ p.imie|lower }}">
+        <td class="text-muted ps-2">{{ p.nr_ewidencyjny|default:"—" }}</td>
+        <td class="fw-semibold">{{ p.nazwisko }}</td>
+        <td>{{ p.imie }}</td>
+        <td class="text-nowrap text-muted">
+          {{ p.data_zatrudnienia|date:"d.m.Y"|default:"—" }}
         </td>
-        <td>
-          <span class="fw-semibold">{{ p.nazwisko }}</span> {{ p.imie }}
-          {% if p.nr_ewidencyjny %}
-            <small class="text-muted ms-1">#{{ p.nr_ewidencyjny }}</small>
-          {% endif %}
-        </td>
+        <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+            title="{{ p.stanowisko }}">{{ p.stanowisko|default:"—" }}</td>
+        <td>{{ p.strefa|default:"—" }}</td>
         <td>
           {% if p.dzial %}
           <span class="badge bg-light text-dark border">{{ p.dzial }}</span>
           {% else %}<span class="text-muted">—</span>{% endif %}
         </td>
-        <td>{{ p.zmiana|default:"—" }}</td>
-        <td>{{ p.zmiana_grupa|default:"—" }}</td>
-        <td class="small text-muted">{{ p.stanowisko|default:"—"|truncatechars:25 }}</td>
+        <td class="text-center">{{ p.zmiana|default:"—" }}</td>
+        <td class="text-center">{{ p.zmiana_grupa|default:"—" }}</td>
+        <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+            title="{{ p.przelozony }}">{{ p.przelozony|default:"—" }}</td>
         <td>
           {% if p.absencje_lista %}
           <div class="d-flex flex-wrap gap-1">
             {% for a in p.absencje_lista %}
             {% if forloop.counter <= 3 %}
-            <span class="badge bg-warning text-dark" style="font-size:.72rem"
-                  title="{{ a.typ }}">{{ a.data|date:"d.m.Y" }}</span>
+            <span class="badge bg-warning text-dark" style="font-size:.7rem"
+                  title="{{ a.typ }}">{{ a.data|date:"d.m" }}</span>
             {% endif %}
             {% endfor %}
             {% if p.liczba_absencji > 3 %}
-            <span class="badge bg-secondary" style="font-size:.72rem"
-                  title="Łącznie {{ p.liczba_absencji }} absencji">+{{ p.liczba_absencji|add:"-3" }}</span>
+            <span class="badge bg-secondary" style="font-size:.7rem">+{{ p.liczba_absencji|add:"-3" }}</span>
             {% endif %}
           </div>
           {% else %}
@@ -205,8 +207,8 @@
 
 {% else %}
 <div class="alert alert-secondary">
-  Brak pracowników w bazie danych.
-  <a href="{% url 'import_danych:import_pracownicy' %}">Zaimportuj pracowników z pliku Excel.</a>
+  Brak pracowników{% if q or arkusz_q %} spełniających kryteria filtrowania{% else %} w bazie danych.
+  <a href="{% url 'import_danych:import_pracownicy' %}">Zaimportuj pracowników z pliku Excel.</a>{% endif %}
 </div>
 {% endif %}
 
@@ -258,7 +260,6 @@
 
 {% block extra_js %}
 <script>
-// ── Modal kompetencji ──────────────────────────────────────────────────────────
 (function () {
   'use strict';
   const modalEl   = document.getElementById('modalKompetencje');
@@ -282,29 +283,23 @@
           bodyEl.innerHTML = '<p class="text-muted text-center py-3">Brak kompetencji.</p>';
           return;
         }
-
-        // Group by department
         const grouped = {};
         data.kompetencje.forEach(k => {
           const d = k.dzial || '—';
           if (!grouped[d]) grouped[d] = [];
           grouped[d].push(k);
         });
-
         let html = '';
         for (const [dzial, komp] of Object.entries(grouped)) {
           html += `<div class="mb-3">
             <div class="text-uppercase fw-semibold small text-secondary mb-1"
                  style="letter-spacing:.05em">${dzial}</div>
-            <table class="table table-sm table-hover mb-0">
-              <tbody>`;
+            <table class="table table-sm table-hover mb-0"><tbody>`;
           komp.forEach(k => {
             const v = k.wynik;
             const fmt = Number.isInteger(v) ? v : parseFloat(v.toFixed(2));
-            html += `<tr>
-              <td class="ps-2">${k.aktywnosc}</td>
-              <td class="text-end fw-semibold pe-2" style="width:60px">${fmt}</td>
-            </tr>`;
+            html += `<tr><td class="ps-2">${k.aktywnosc}</td>
+              <td class="text-end fw-semibold pe-2" style="width:60px">${fmt}</td></tr>`;
           });
           html += `</tbody></table></div>`;
         }
@@ -316,36 +311,17 @@
   });
 })();
 
-// ── Wyszukiwanie serwerowe (debounce) + sortowanie na stronie ─────────────────
+// Debounce wyszukiwania
 (function () {
-  'use strict';
-  const form           = document.getElementById('formFiltr');
-  const szukaj         = document.getElementById('szukaj');
-  const filtrDzial     = document.getElementById('filtrDzial');
-  const filtrNieobecni = document.getElementById('filtrNieobecni');
-  const sortuj         = document.getElementById('sortuj');
-  const tbody          = document.querySelector('#tablePracownicy tbody');
-
-  // Debounce: submit form 400ms after user stops typing
+  const form    = document.getElementById('formFiltr');
+  const szukaj  = document.getElementById('szukaj');
+  const nieobecni = document.getElementById('filtrNieobecni');
   let timer;
-  szukaj.addEventListener('input', () => {
+  szukaj?.addEventListener('input', () => {
     clearTimeout(timer);
     timer = setTimeout(() => form.submit(), 400);
   });
-  filtrDzial.addEventListener('change', () => form.submit());
-  if (filtrNieobecni) filtrNieobecni.addEventListener('change', () => form.submit());
-
-  // Sortowanie w obrębie bieżącej strony
-  if (sortuj && tbody) {
-    sortuj.addEventListener('change', () => {
-      const sort = sortuj.value;
-      const rows = Array.from(document.querySelectorAll('.karta-pracownika'));
-      rows.sort((a, b) => sort === 'za'
-        ? b.dataset.sortname.localeCompare(a.dataset.sortname, 'pl')
-        : a.dataset.sortname.localeCompare(b.dataset.sortname, 'pl'))
-        .forEach(r => tbody.appendChild(r));
-    });
-  }
+  nieobecni?.addEventListener('change', () => form.submit());
 })();
 </script>
 {% endblock %}

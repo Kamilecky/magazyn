@@ -15,6 +15,14 @@
   {% endif %}
 </div>
 
+{% if messages %}
+  {% for msg in messages %}
+  <div class="alert alert-{{ msg.tags }} alert-dismissible fade show" role="alert">
+    {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% endfor %}
+{% endif %}
+
 {% if not tmp_uuid %}
 <!-- ═══ KROK 1: Upload ═══ -->
 <div class="row justify-content-center">
@@ -69,7 +77,9 @@
 </div>
 
 {% else %}
-<!-- ═══ KROK 2: Podgląd i potwierdzenie ═══ -->
+<!-- ═══ KROK 2: Potwierdzenie ═══ -->
+
+<!-- Statystyki -->
 <div class="row g-3 mb-3">
   <div class="col-sm-4">
     <div class="card text-center border-success">
@@ -97,16 +107,23 @@
   </div>
 </div>
 
-{% if plik_kompetencje_nazwa or plik_struktura_nazwa %}
-<div class="mb-3 small text-muted">
-  {% if plik_kompetencje_nazwa %}
-    <i class="bi bi-file-earmark-excel me-1 text-success"></i>{{ plik_kompetencje_nazwa }}
-  {% endif %}
-  {% if plik_struktura_nazwa %}
-    &nbsp;<i class="bi bi-file-earmark-excel me-1 text-warning"></i>{{ plik_struktura_nazwa }}
+<!-- Nazwy plików + przycisk podglądu -->
+<div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+  <div class="small text-muted">
+    {% if plik_kompetencje_nazwa %}
+      <i class="bi bi-file-earmark-excel me-1 text-success"></i>{{ plik_kompetencje_nazwa }}
+    {% endif %}
+    {% if plik_struktura_nazwa %}
+      &nbsp;<i class="bi bi-file-earmark-excel me-1 text-warning"></i>{{ plik_struktura_nazwa }}
+    {% endif %}
+  </div>
+  {% if podglad_arkusze %}
+  <button type="button" class="btn btn-outline-primary btn-sm"
+          data-bs-toggle="modal" data-bs-target="#modalPodglad">
+    <i class="bi bi-table me-1"></i>Podgląd zaimportowanych danych
+  </button>
   {% endif %}
 </div>
-{% endif %}
 
 {% if ostrzezenia %}
 <div class="alert alert-warning">
@@ -115,38 +132,26 @@
 </div>
 {% endif %}
 
+<!-- Podsumowanie per arkusz -->
+{% if podglad_arkusze %}
 <div class="card shadow-sm mb-3">
   <div class="card-header fw-semibold">
-    <i class="bi bi-table me-1 text-success"></i>Podgląd — pierwsze {{ podglad|length }} pracowników
-    {% if stats.total_pracownikow > podglad|length %}
-      <span class="badge bg-secondary">z {{ stats.total_pracownikow }}</span>
-    {% endif %}
+    <i class="bi bi-layers me-1 text-secondary"></i>Podsumowanie arkuszy
   </div>
-  <div class="table-responsive">
-    <table class="table table-sm table-hover mb-0">
-      <thead class="table-light">
-        <tr>
-          <th>Nazwisko</th><th>Imię</th><th>Dział</th>
-          <th>Zmiana</th><th>Zmiana gr.</th>
-          <th class="text-end">Kompetencji</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for p in podglad %}
-        <tr>
-          <td class="fw-semibold">{{ p.nazwisko }}</td>
-          <td>{{ p.imie }}</td>
-          <td><span class="badge bg-light text-dark border">{{ p.dzial|default:"—" }}</span></td>
-          <td>{{ p.zmiana|default:"—" }}</td>
-          <td>{{ p.zmiana_grupa|default:"—" }}</td>
-          <td class="text-end text-primary fw-semibold">{{ p.kompetencje|length }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div class="card-body py-2">
+    <div class="d-flex flex-wrap gap-2">
+      {% for ark in podglad_arkusze %}
+      <span class="badge bg-light text-dark border fs-6 fw-normal px-3 py-2">
+        <span class="fw-semibold">{{ ark.label }}</span>
+        <span class="ms-2 text-muted">{{ ark.count }} os.</span>
+      </span>
+      {% endfor %}
+    </div>
   </div>
 </div>
+{% endif %}
 
+<!-- Przyciski akcji -->
 <div class="d-flex gap-2">
   <form method="post">
     {% csrf_token %}
@@ -160,6 +165,96 @@
     <i class="bi bi-arrow-left me-1"></i>Wróć (anuluj)
   </a>
 </div>
+
+<!-- ═══ Modal podglądu ═══ -->
+{% if podglad_arkusze %}
+<div class="modal fade" id="modalPodglad" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="bi bi-table me-2 text-primary"></i>Podgląd zaimportowanych pracowników
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-0">
+
+        <!-- Zakładki arkuszy -->
+        <ul class="nav nav-tabs px-3 pt-2 border-bottom-0" id="tabArkusze" role="tablist">
+          {% for ark in podglad_arkusze %}
+          <li class="nav-item" role="presentation">
+            <button class="nav-link {% if forloop.first %}active{% endif %} d-flex align-items-center gap-2"
+                    id="tab-{{ ark.key }}"
+                    data-bs-toggle="tab"
+                    data-bs-target="#pane-{{ ark.key }}"
+                    type="button" role="tab">
+              {{ ark.label }}
+              <span class="badge bg-secondary fw-normal">{{ ark.count }}</span>
+            </button>
+          </li>
+          {% endfor %}
+        </ul>
+
+        <div class="tab-content">
+          {% for ark in podglad_arkusze %}
+          <div class="tab-pane fade {% if forloop.first %}show active{% endif %}"
+               id="pane-{{ ark.key }}" role="tabpanel">
+            <div class="table-responsive" style="max-height:65vh">
+              <table class="table table-sm table-hover table-bordered mb-0 align-middle"
+                     style="font-size:.83rem">
+                <thead class="table-dark sticky-top">
+                  <tr>
+                    <th class="ps-3">#</th>
+                    <th>Nazwisko</th>
+                    <th>Imię</th>
+                    <th>Dział</th>
+                    <th>Stanowisko</th>
+                    <th>Zmiana</th>
+                    <th>Gr. zm.</th>
+                    <th class="text-end pe-3">Komp.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for p in ark.pracownicy %}
+                  <tr>
+                    <td class="text-muted ps-3">{{ forloop.counter }}</td>
+                    <td class="fw-semibold">{{ p.nazwisko }}</td>
+                    <td>{{ p.imie }}</td>
+                    <td>
+                      {% if p.dzial %}
+                      <span class="badge bg-light text-dark border">{{ p.dzial }}</span>
+                      {% else %}<span class="text-muted">—</span>{% endif %}
+                    </td>
+                    <td class="text-muted" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                      {{ p.stanowisko|default:"—" }}
+                    </td>
+                    <td>{{ p.zmiana|default:"—" }}</td>
+                    <td>{{ p.zmiana_grupa|default:"—" }}</td>
+                    <td class="text-end pe-3 fw-semibold text-primary">{{ p.kompetencje|length }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% if ark.count > 40 %}
+            <div class="px-3 py-2 text-muted small border-top">
+              <i class="bi bi-info-circle me-1"></i>
+              Pokazano 40 z {{ ark.count }} pracowników z tego arkusza.
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Zamknij</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {% endif %}
 {% endblock %}
 
