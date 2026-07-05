@@ -11,8 +11,8 @@ urlpatterns = [
     path('konta/', include('apps.konta.urls')),
 path('przydzialy/', include('apps.przydzialy.urls')),
     path('raporty/', include('apps.raporty.urls')),
-    path('stanowiska/', include('apps.stanowiska.urls')),
     path('pracownicy/', include('apps.pracownicy.urls')),
+    path('import/', include(('apps.pracownicy.urls_import', 'import_danych'))),
     path('notatki/', include('apps.notatki.urls')),
 ]
 

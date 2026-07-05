@@ -151,41 +151,36 @@
       <span id="sidebarToggleLabel">Zwiń</span>
     </button>
 
-    <!-- Pracownicy (nowy system) -->
+    <!-- Pracownicy -->
     <div class="sidebar-section">
       <div class="sidebar-section-label">Pracownicy</div>
-      <a class="sidebar-link" href="{% url 'pracownicy:lista' %}" data-path="/pracownicy/" data-label="Zaimportowani pracownicy">
-        <i class="bi bi-people-fill"></i><span>Zaimportowani pracownicy</span>
-      </a>
-      <a class="sidebar-link" href="{% url 'pracownicy:import_excel' %}" data-path="/pracownicy/import/" data-label="Import (Excel / CSV)">
-        <i class="bi bi-upload"></i><span>Import (Excel / CSV)</span>
+      <a class="sidebar-link" href="{% url 'pracownicy:lista' %}" data-path="/pracownicy/" data-label="Lista pracowników">
+        <i class="bi bi-people-fill"></i><span>Lista pracowników</span>
       </a>
     </div>
 
-    <!-- Plany zmian -->
+    <!-- Plany dzienne -->
     <div class="sidebar-section">
-      <div class="sidebar-section-label">Plany zmian</div>
-      <a class="sidebar-link" href="{% url 'pracownicy:plany_lista' %}" data-path="/pracownicy/plany/" data-label="Plany stanowiskowe">
-        <i class="bi bi-calendar3"></i><span>Plany stanowiskowe</span>
-      </a>
-      <a class="sidebar-link" href="{% url 'pracownicy:import_plan_poranny' %}" data-path="/pracownicy/import/plan/poranny/" data-label="Import planu porannego">
-        <i class="bi bi-sun-fill text-warning"></i><span>Import planu porannego</span>
-      </a>
-      <a class="sidebar-link" href="{% url 'pracownicy:import_plan_popobudniowy' %}" data-path="/pracownicy/import/plan/popobudniowy/" data-label="Import planu popołudniowego">
-        <i class="bi bi-sun-fill" style="color:#fd7e14"></i><span>Import planu popołudniowego</span>
-      </a>
-      <a class="sidebar-link" href="{% url 'pracownicy:import_plan_nocny' %}" data-path="/pracownicy/import/plan/nocny/" data-label="Import planu nocnego">
-        <i class="bi bi-moon-fill"></i><span>Import planu nocnego</span>
+      <div class="sidebar-section-label">Plany dzienne</div>
+      <a class="sidebar-link" href="{% url 'pracownicy:plany_lista' %}" data-path="/pracownicy/plany/" data-label="Lista planów dziennych">
+        <i class="bi bi-calendar3"></i><span>Lista planów dziennych</span>
       </a>
     </div>
 
-    <!-- Stanowiska -->
+    <!-- Import danych -->
     <div class="sidebar-section">
-      <div class="sidebar-section-label">Stanowiska</div>
-      <a class="sidebar-link" href="{% url 'stanowiska:lista' %}" data-path="/stanowiska/" data-label="Lista stanowisk">
-        <i class="bi bi-building-fill"></i><span>Lista stanowisk</span>
+      <div class="sidebar-section-label">Import danych</div>
+      <a class="sidebar-link" href="{% url 'import_danych:import_plan_zmianowy' %}" data-path="/import/plan-zmianowy/" data-label="Import planu zmianowego">
+        <i class="bi bi-calendar-week-fill text-primary"></i><span>Import planu zmianowego</span>
+      </a>
+      <a class="sidebar-link" href="{% url 'import_danych:import_pracownicy' %}" data-path="/import/pracownicy/" data-label="Import listy pracowników">
+        <i class="bi bi-person-lines-fill text-success"></i><span>Import listy pracowników</span>
+      </a>
+      <a class="sidebar-link" href="{% url 'import_danych:import_pracownicy_apt' %}" data-path="/import/pracownicy-apt/" data-label="Import pracowników APT">
+        <i class="bi bi-person-badge-fill text-warning"></i><span>Import pracowników APT</span>
       </a>
     </div>
+
 
     <!-- Przydziały -->
     <div class="sidebar-section">

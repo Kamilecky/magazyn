@@ -1,0 +1,156 @@
+{% extends 'base.html' %}
+{% load pracownicy_extras %}
+{% block title %}Import pracowników APT{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-4">
+  <i class="bi bi-person-badge-fill fs-3 text-warning"></i>
+  <div class="flex-grow-1">
+    <h4 class="mb-0">Import pracowników APT</h4>
+    <small class="text-muted">Agencja Pracy Tymczasowej — PracownicyAPT_list_ver_02_NEW.xlsx</small>
+  </div>
+  {% if apt_count %}
+  <a href="{% url 'pracownicy:lista_pracownikow_apt' %}" class="btn btn-outline-warning btn-sm">
+    <i class="bi bi-person-badge me-1"></i>Pracownicy APT ({{ apt_count }})
+  </a>
+  {% endif %}
+</div>
+
+<!-- ═══ Sekcja 1: Mapowanie kolumn 1–14 ═══ -->
+<div class="card shadow-sm mb-4">
+  <div class="card-header fw-semibold">
+    <i class="bi bi-table me-2 text-warning"></i>Mapowanie kolumn (1–14) na działy/poddziały
+    <span class="badge bg-secondary ms-2">wymagane przed importem z ocenami</span>
+  </div>
+  <div class="card-body">
+    <p class="text-muted small mb-3">
+      Plik APT zawiera kolumny oznaczone liczbami 1–14 (prawdopodobnie ID działów/poddziałów z macierzy kompetencji).
+      Przypisz każdej liczbie nazwę działu lub poddziału, aby oceny były czytelne w systemie.
+      <br><strong>Uwaga:</strong> W pliku testowym kolumny ocen są puste — mapowanie można uzupełnić
+      po otrzymaniu produkcyjnego pliku z wypełnionymi ocenami.
+    </p>
+    <form method="post" id="mappingForm">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="save_mapping">
+      <div class="row g-2">
+        {% for i in numery_kolumn %}
+        <div class="col-md-6 col-lg-4">
+          <div class="input-group input-group-sm">
+            <span class="input-group-text" style="width:40px">{{ i }}</span>
+            <input type="text" class="form-control" name="kolumna_{{ i }}"
+                   value="{{ kolumny|get_item:i|default:'' }}"
+                   placeholder="np. Dział Przyjęcia">
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <button type="submit" class="btn btn-outline-warning btn-sm mt-3">
+        <i class="bi bi-save me-1"></i>Zapisz mapowanie
+      </button>
+    </form>
+  </div>
+</div>
+
+{% if not tmp_uuid %}
+<!-- ═══ Sekcja 2: Upload ═══ -->
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <div class="card shadow-sm">
+      <div class="card-header fw-semibold">
+        <i class="bi bi-upload me-2 text-warning"></i>Wybierz plik APT
+      </div>
+      <div class="card-body">
+        <form method="post" enctype="multipart/form-data" id="uploadForm">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="upload">
+          <div class="mb-3">
+            <label class="form-label">Plik APT (.xlsx)</label>
+            <input type="file" name="plik" class="form-control" accept=".xlsx" required>
+            <div class="form-text">
+              Arkusz <strong>PracownicyAPT01</strong>: kolumny nazwisko, imię,
+              oceny 1–5, agencja, oceny 6–8, płeć, grupa, oceny 9–14.
+            </div>
+          </div>
+          <div class="alert alert-warning small py-2">
+            <i class="bi bi-exclamation-triangle-fill me-1"></i>
+            Potwierdzenie importu <strong>zastąpi</strong> wszystkich istniejących pracowników APT.
+          </div>
+          <button type="submit" class="btn btn-warning" id="submitBtn">
+            <span class="spinner-border spinner-border-sm me-1" id="spinner" style="display:none"></span>
+            <i class="bi bi-search me-1" id="searchIcon"></i>Parsuj i podejrzyj
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% else %}
+<!-- ═══ Sekcja 3: Podgląd i potwierdzenie ═══ -->
+<div class="card shadow-sm mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span class="fw-semibold">
+      <i class="bi bi-table me-1 text-warning"></i>Podgląd — pierwsze {{ podglad|length }} pracowników APT
+      {% if stats.total_pracownikow > podglad|length %}
+        <span class="badge bg-secondary">z {{ stats.total_pracownikow }}</span>
+      {% endif %}
+    </span>
+    <small class="text-muted">{{ nazwa_pliku }}</small>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Nazwisko</th><th>Imię</th><th>Agencja</th>
+          <th>Płeć</th><th>Grupa</th>
+          <th class="text-end">Ocen (&gt;0)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in podglad %}
+        <tr>
+          <td class="fw-semibold">{{ p.nazwisko }}</td>
+          <td>{{ p.imie }}</td>
+          <td><span class="badge bg-warning text-dark">{{ p.nazwa_agencji|default:"—" }}</span></td>
+          <td>{{ p.plec|default:"—" }}</td>
+          <td>{{ p.grupa|default:"—" }}</td>
+          <td class="text-end text-muted">{{ p.oceny|length }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if ostrzezenia %}
+<div class="alert alert-warning small">
+  <strong>Ostrzeżenia:</strong>
+  <ul class="mb-0 mt-1">{% for o in ostrzezenia %}<li>{{ o }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<div class="d-flex gap-2">
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="confirm">
+    <input type="hidden" name="tmp_uuid" value="{{ tmp_uuid }}">
+    <button type="submit" class="btn btn-warning">
+      <i class="bi bi-check-lg me-1"></i>Zatwierdź — zastąp wszystkich pracowników APT
+    </button>
+  </form>
+  <a href="{% url 'import_danych:import_pracownicy_apt' %}" class="btn btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Wróć (anuluj)
+  </a>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('uploadForm')?.addEventListener('submit', function () {
+  document.getElementById('spinner').style.display = 'inline-block';
+  document.getElementById('searchIcon').style.display = 'none';
+  document.getElementById('submitBtn').disabled = true;
+});
+</script>
+{% endblock %}

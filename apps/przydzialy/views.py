@@ -1,7 +1,8 @@
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
+from django.db.models import Count
 from apps.stanowiska.models import Stanowisko
-from apps.pracownicy.models import PlanZmiany, Pracownik
+from apps.pracownicy.models import Pracownik, PlanDzienny
 from .models import AuditLog
 
 
@@ -14,43 +15,27 @@ def _log(request, akcja, rekrut=None):
     )
 
 
-def _obsada_ze_stanowiska(stanowisko_nazwa, istniejacy):
-    aktualnie = 0
-    pracownicy = []
-    for zmiana in ('poranny', 'popobudniowy', 'nocny'):
-        plan = PlanZmiany.objects.filter(zmiana=zmiana).first()
-        if plan and plan.dopasowanie:
-            osoby = plan.dopasowanie.get(stanowisko_nazwa) or []
-            for p in osoby:
-                imie, nazwisko = p.get('imie', ''), p.get('nazwisko', '')
-                if (imie, nazwisko) not in istniejacy:
-                    continue  # pracownik usunięty z bazy — ignoruj nieaktualne dopasowanie
-                aktualnie += 1
-                pracownicy.append({
-                    'imie': imie,
-                    'nazwisko': nazwisko,
-                    'zmiana': plan.get_zmiana_display(),
-                })
-    pracownicy.sort(key=lambda p: (p['nazwisko'], p['imie']))
-    return aktualnie, pracownicy
-
-
 @login_required
 def dashboard(request):
     stanowiska = Stanowisko.objects.filter(aktywne=True)
-    istniejacy = set(Pracownik.objects.values_list('imie', 'nazwisko'))
+    pracownicy_count = Pracownik.objects.count()
+    plan = PlanDzienny.objects.order_by('-data_importu').first()
+
     obsada = []
     for s in stanowiska:
-        aktualnie, pracownicy = _obsada_ze_stanowiska(s.nazwa, istniejacy)
-        proc = min(int(aktualnie / s.max_pracownikow * 100) if s.max_pracownikow else 0, 100)
         obsada.append({
             'stanowisko': s,
-            'aktualnie': aktualnie,
-            'proc': proc,
-            'kolor': 'danger' if proc > 90 else ('warning' if proc >= 70 else 'success'),
-            'pracownicy': pracownicy,
+            'aktualnie': 0,
+            'proc': 0,
+            'kolor': 'secondary',
+            'pracownicy': [],
         })
-    return render(request, 'przydzialy/dashboard.html', {'obsada': obsada})
+
+    return render(request, 'przydzialy/dashboard.html', {
+        'obsada': obsada,
+        'pracownicy_count': pracownicy_count,
+        'ostatni_plan': plan,
+    })
 
 
 @login_required

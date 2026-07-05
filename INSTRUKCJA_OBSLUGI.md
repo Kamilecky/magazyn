@@ -5,8 +5,15 @@
 1. [Logowanie i wylogowanie](#1-logowanie-i-wylogowanie)
 2. [Nawigacja po systemie](#2-nawigacja-po-systemie)
 3. [Lista pracowników](#3-lista-pracowników)
-4. [Import pracowników z pliku](#4-import-pracowników-z-pliku)
-5. [Stanowiska](#5-stanowiska)
+4. [Lista pracowników APT](#4-lista-pracowników-apt)
+5. [Plany dzienne](#5-plany-dzienne)
+6. [Przydział pracowników do planu](#6-przydział-pracowników-do-planu)
+7. [Wyniki przydziału](#7-wyniki-przydziału)
+8. [Import danych](#8-import-danych)
+   - [Import planu zmianowego](#81-import-planu-zmianowego)
+   - [Import pracowników](#82-import-pracowników)
+   - [Import pracowników APT](#83-import-pracowników-apt)
+9. [Stanowiska](#9-stanowiska)
 
 ---
 
@@ -16,192 +23,274 @@
 
 1. Otwórz przeglądarkę i przejdź pod adres aplikacji (np. `http://127.0.0.1:8000/`).
 2. Zostaniesz automatycznie przekierowany na stronę logowania.
-3. Wpisz **login** i **hasło**, następnie kliknij przycisk **Zaloguj**.
-
-Po poprawnym zalogowaniu system przeniesie Cię na listę pracowników.
+3. Wpisz **login** i **hasło**, następnie kliknij **Zaloguj**.
 
 ### Wylogowanie
 
-1. Kliknij ikonę użytkownika w prawym górnym rogu ekranu (lub swoje imię i nazwisko).
-2. Z rozwiniętego menu wybierz **Wyloguj** (czerwony przycisk).
+1. Kliknij ikonę użytkownika w prawym górnym rogu.
+2. Wybierz **Wyloguj**.
 
 ---
 
 ## 2. Nawigacja po systemie
 
-Po lewej stronie ekranu znajduje się **boczne menu nawigacyjne** (sidebar). Zawiera ono wszystkie dostępne sekcje systemu.
-
-### Sekcje menu
+Po lewej stronie ekranu znajduje się **boczne menu nawigacyjne**.
 
 | Sekcja | Co zawiera |
 |---|---|
-| **Pracownicy** | Lista pracowników, Import z pliku |
+| **Pracownicy** | Lista pracowników etatowych, Lista pracowników APT |
+| **Plany dzienne** | Lista zaimportowanych planów z przyciskami przydziału |
+| **Import danych** | Import planu, Import pracowników, Import pracowników APT |
 | **Stanowiska** | Lista stanowisk magazynowych |
-| **Przydziały** | Dashboard obsady, Historia przydziałów |
+| **Przydziały** | Dashboard obsady (legacy), Historia przydziałów |
 | **Raporty** | Raport obsady w formacie Excel |
 
-### Zwijanie menu
-
-Menu boczne można zwinąć, aby uzyskać więcej miejsca na ekranie. Kliknij przycisk **Zwiń** u góry menu — menu zwinęło się do samych ikon. Aby je rozwinąć, kliknij ponownie. Stan zwinięcia/rozwinięcia jest zapamiętywany między sesjami.
+**Zwijanie menu:** kliknij przycisk **Zwiń** u góry — menu zwija się do ikon. Stan jest zapamiętywany między sesjami.
 
 ---
 
 ## 3. Lista pracowników
 
-**Ścieżka:** Menu boczne → **Pracownicy** → **Lista pracowników**
+**Ścieżka:** Menu → **Pracownicy**
 
-### Co widać na liście
+### Co widać w tabeli
 
-Pracownicy wyświetlani są jako karty. Każda karta zawiera:
-
-- **Avatar** — kolorowy okrąg z inicjałami pracownika
+Każdy wiersz zawiera:
+- **Inicjały** — kolorowe koło
 - **Imię i nazwisko**
-- **Liczba stanowisk** w portfolio pracownika
-- **Kafelki stanowisk** — jedno pole na każde stanowisko z portfolio:
-  - Nazwa stanowiska
-  - Zielony badge **100%** — oznacza, że pracownik zna to stanowisko
-  - Zielony pasek wypełniony do końca
+- **Dział** — badge z nazwą działu
+- **Zmiana** i **Zmiana/Grupa** (np. `A-1`, `B-2`, `C-3`)
+- **Stanowisko**
+- **Kompetencje** — liczba aktywności z oceną > 0; kliknij, aby zobaczyć listę w oknie modalnym
 
-Jeśli pracownik nie ma przypisanego żadnego stanowiska, karta zawiera komunikat **"Brak przypisanych stanowisk"**.
+### Wyszukiwanie i filtrowanie
 
-### Tooltip — szczegóły stanowiska
+- Pole tekstowe — filtruje po imieniu lub nazwisku na bieżąco
+- Rozwijana lista **Dział** — zawęża wyniki do wybranego działu
+- Pole wyboru **Tylko nieobecni** — pokazuje pracowników z jakąkolwiek absencją
 
-Najedź kursorem myszy na kafelek stanowiska — pojawi się ciemna dymka z podstawowym profilem tego stanowiska (poziom dźwigania, chodzenia, siedzenia, powtarzalności i informacja, czy praca odbywa się na zewnątrz). Dymka znika, gdy odsuniesz kursor.
+### Usuwanie
 
-### Wyszukiwanie pracownika
+- **Pojedynczy pracownik:** ikona kosza → potwierdź
+- **Wszyscy:** przycisk **Wyczyść wszystkich** → potwierdź w oknie dialogowym
 
-W pasku nad kartami znajduje się pole tekstowe **Szukaj po imieniu lub nazwisku**. Wpisz dowolną część imienia lub nazwiska — karty filtrują się na bieżąco, bez przeładowania strony.
-
-### Filtrowanie po stanowisku
-
-Obok pola wyszukiwania znajduje się lista rozwijana **Stanowisko**. Wybierz konkretne stanowisko (np. *PTS 4*), aby zobaczyć tylko pracowników, którzy mają je w swoim portfolio. Opcja *Wszystkie stanowiska* przywraca pełną listę.
-
-### Sortowanie
-
-Trzecia lista rozwijana pozwala posortować widoczne karty:
-
-- **Alfabetycznie A–Z** — od Adamski do Żurek
-- **Alfabetycznie Z–A** — od Żurek do Adamski
-
-Sortowanie działa po nazwisku, a przy tym samym nazwisku — po imieniu.
-
-### Licznik wyników
-
-W prawym rogu paska narzędzi wyświetlana jest aktualna liczba widocznych kart. Liczba zmienia się automatycznie po zastosowaniu filtrów.
+> Usunięcie jest trwałe. Dane można przywrócić tylko przez ponowny import.
 
 ---
 
-## 4. Import pracowników z pliku
+## 4. Lista pracowników APT
 
-**Ścieżka:** Menu boczne → **Pracownicy** → **Import (Excel / CSV)**
+**Ścieżka:** Menu → **Pracownicy** → **APT**
 
-Import pozwala załadować listę pracowników z zewnętrznego pliku. System używa sztucznej inteligencji (Claude AI), która samodzielnie rozpoznaje kolumny z danymi — nie musisz dostosowywać formatu pliku do żadnego szablonu.
+Tabela pracowników agencji pracy tymczasowej. Kolumny: nazwisko, imię, agencja, płeć, grupa.
 
-### Obsługiwane formaty plików
+---
 
-- **Excel** — pliki `.xlsx` (Microsoft Excel 2007 i nowsze)
-- **CSV** — pliki `.csv` z separatorem przecinka lub średnika, kodowanie UTF-8
+## 5. Plany dzienne
 
-### Jak powinien wyglądać plik
+**Ścieżka:** Menu → **Plany dzienne**
 
-Plik powinien zawierać co najmniej trzy rodzaje danych dla każdego pracownika:
+Widok kafelków wszystkich zaimportowanych planów. Każdy kafelek zawiera:
+- Nazwę pliku i datę importu
+- Liczbę aktywności i rekordów godzinowych
+- Status przydziału (kiedy ostatnio przeliczony)
+- Przycisk **Przydziel pracowników** — uruchamia/przelicza przydział
+- Przycisk **Wyniki** — otwiera stronę wyników (widoczny gdy przydział istnieje)
+- Przycisk **Usuń plan**
 
-- **Imię**
-- **Nazwisko**
-- **Stanowiska** — nazwy stanowisk, które pracownik potrafi obsługiwać
+### Jak zaimportować nowy plan
 
-Kolumny mogą mieć dowolne nazwy (np. *Imię*, *First name*, *Pracownik*) i stać w dowolnej kolejności. AI rozpozna je automatycznie.
+Kliknij **Import planu zmianowego** w menu bocznym — patrz sekcja 8.1.
 
-**Przykład pliku Excel:**
+---
 
-| Imię | Nazwisko | PTS 4 | PTS 10 | Wózek |
-|---|---|---|---|---|
-| Jan | Kowalski | TAK | | TAK |
-| Anna | Nowak | | TAK | |
+## 6. Przydział pracowników do planu
 
-**Przykład pliku CSV:**
+**Ścieżka:** Lista planów → przycisk **Przydziel pracowników**
 
-```
-Imie,Nazwisko,Stanowisko
-Jan,Kowalski,PTS 4
-Anna,Nowak,PTS 10
-```
+Po kliknięciu system automatycznie:
 
-### Obsługiwane nazwy stanowisk
+1. Wczytuje zapotrzebowanie godzinowe z planu dla każdej aktywności i zmiany
+2. Dla każdej zmiany (I/II/III) buduje pulę pracowników na podstawie `zmiana_grupa`:
+   - Zmiana I → pracownicy z grupą `A-...`
+   - Zmiana II → pracownicy z grupą `B-...`
+   - Zmiana III → pracownicy z grupą `C-...`
+3. Przydziela pracowników do aktywności w kolejności:
+   - Priorytetowi etatowi (działy IN/OB/FF/ZW/PR) pasujący do aktywności
+   - Pozostali etatowi pasujący do aktywności
+   - Pracownicy APT sortowani wg ocen
+4. Priorytetowi bez przypisanej aktywności trafiają do najbliższej pasującej
+5. Zapisuje wynik i przekierowuje na stronę wyników
 
-System rozpoznaje następujące stanowiska (AI dopasuje je nawet jeśli w pliku użyto skrótu lub nieco innej pisowni):
+**Uwaga:** przycisk „Przydziel" przelicza od nowa — poprzedni wynik zostaje zastąpiony. Możesz przeliczać wielokrotnie (np. po reimporcie pracowników).
 
-- PTS 4
-- PTS 10
-- Sorter - Wrzucanie
-- Sorter - Zbieranie
-- AA
-- Wózek - Czołówka
-- Wózek - Retrack
-- Wózek - Piesek
+### Dopasowanie pracownika do aktywności
 
-Inne wartości są ignorowane — nie powodują błędu, po prostu nie zostaną zapisane.
+Pracownik jest kierowany do aktywności, jeśli spełnia **co najmniej jeden** warunek:
+- Jego **stanowisko** (dokładne) zgadza się z nazwą aktywności
+- Jego **dział** zawiera się lub zawiera nazwę działu aktywności
+- Jego **kod departamentu** (IN/OB/FF/ZW/PR) pasuje do słów kluczowych działu aktywności
+- Ma **kompetencję** (ocena > 0) dla tej aktywności w pliku KOMPETENCJE
 
-### Jak przeprowadzić import — krok po kroku
+---
 
-1. Przejdź do strony **Import (Excel / CSV)**.
-2. Kliknij pole **"Wybierz plik"** i wskaż plik `.xlsx` lub `.csv` na swoim komputerze.
-3. Kliknij przycisk **Importuj**.
-4. Pojawi się okno z animowanym kółkiem ładowania i komunikatem **"Trwa przetwarzanie pliku"**. Poczekaj — nie zamykaj przeglądarki ani nie odświeżaj strony. Czas oczekiwania zależy od liczby wierszy w pliku i wynosi zazwyczaj kilka sekund.
-5. Po zakończeniu zostaniesz automatycznie przeniesiony na listę pracowników.
-6. Na górze strony pojawi się zielony komunikat potwierdzający, np.:
+## 7. Wyniki przydziału
 
-   > *Dodano: 12, zaktualizowano: 3 pracowników. Pracownicy przypisani do stanowisk: PTS 4 (7 os.), PTS 10 (5 os.), Wózek - Retrack (4 os.).*
+**Ścieżka:** Lista planów → przycisk **Wyniki**
 
-### Aktualizacja istniejących pracowników
+### Podsumowanie (góra strony)
 
-Jeśli pracownik o tym samym imieniu i nazwisku już istnieje w bazie, jego dane **zostaną zaktualizowane** — system nie stworzy duplikatu. Dotyczy to w szczególności listy stanowisk: nowy import zastępuje poprzednią listę stanowisk dla tego pracownika.
+Trzy kafelki — po jednym na zmianę — pokazują łączną liczbę przypisanych pracowników i liczbę bez aktywności (fillers).
 
-### Co zrobić w przypadku błędu
+### Zakładki zmian
 
-Jeśli import się nie powiedzie, na stronie pojawi się czerwony komunikat z opisem problemu:
+Kliknij zakładkę **Zm. 1 / Zm. 2 / Zm. 3**, aby przełączać między zmianami.
+
+### Karta aktywności
+
+Każda aktywność wyświetlona jest jako karta zawierająca:
+
+- **Nagłówek zielony** — plan obsadzony w pełni (`przydzielono ≥ wymagana`)
+- **Nagłówek żółty** — niedobór; ikona ostrzeżenia z informacją ile brakuje
+- **Badge** `przydzielono / wymagana` — np. `5 / 7`
+
+**Tabela godzinowa:**
+
+| Wiersz | Znaczenie |
+|---|---|
+| **Plan** | Wymagana liczba pracowników w danej godzinie (czerwone komórki = niedobór) |
+| **Fakt** | Faktyczna obsada (stała = liczba przydzielonych pracowników) |
+
+**Lista pracowników:**
+
+Każdy pracownik pokazany jako karta z:
+- Inicjał imienia i nazwisko
+- **Kolorowy badge grupy zmiany:** `A-1` (zielony), `B-2` (niebieski), `C-3` (czerwony)
+- **Badge APT** (żółty) — dla pracowników agencyjnych
+- **Tooltip** (najedź kursorem): pełne imię i nazwisko · grupa zmiany · `N` (jeśli nieobecny w dniu planu) · `APT`
+
+### Sekcja „bez przypisanej aktywności"
+
+Na dole każdej zakładki zmiany: lista pracowników, którym nie znaleziono żadnej pasującej aktywności.
+
+### Przelicz ponownie
+
+Przycisk **Przelicz ponownie** w prawym górnym rogu strony uruchamia przydział od nowa (po potwierdzeniu).
+
+---
+
+## 8. Import danych
+
+Każdy import działa dwuetapowo: **wgraj → podejrzyj → zatwierdź**.
+
+---
+
+## 8.1 Import planu zmianowego
+
+**Ścieżka:** Menu → **Import danych** → **Import planu zmianowego**
+
+### Wymagany plik
+
+`Plan_dzienny_NEW.xlsx` — układ kolumn musi być zgodny z szablonem.
+
+### Krok 1 — wgranie i podgląd
+
+1. Kliknij **Wybierz plik** i wskaż plik `Plan_dzienny_NEW.xlsx`.
+2. Kliknij **Wgraj i podejrzyj**.
+3. Sprawdź tabelę podglądu: aktywność, dział, sumy Zmiana I/II/III, wolumen.
+
+### Krok 2 — zatwierdzenie
+
+1. Kliknij **Zatwierdź i zapisz**.
+2. Plan zostaje zapisany i pojawia się na liście planów.
+
+### Częste błędy
 
 | Komunikat | Co zrobić |
 |---|---|
-| *Nieprawidłowy format pliku* | Sprawdź, czy plik ma rozszerzenie `.xlsx` lub `.csv` |
-| *Błąd odczytu pliku Excel* | Plik może być uszkodzony — spróbuj zapisać go ponownie w Excelu |
-| *Błąd API Anthropic* | Problem z połączeniem do AI — skontaktuj się z administratorem |
-| *Nie można sparsować odpowiedzi AI jako JSON* | AI zwróciła nieoczekiwaną odpowiedź — spróbuj ponownie |
+| *Plik musi być .xlsx* | Upewnij się, że format pliku to Excel 2007+ |
+| *Nie znaleziono żadnych aktywności* | Sprawdź, czy kolumna B zawiera wartość `Bufor` w wierszach działów |
+| *Błąd parsowania* | Otwórz plik w Excelu, zapisz ponownie i spróbuj jeszcze raz |
 
 ---
 
-## 5. Stanowiska
+## 8.2 Import pracowników
 
-**Ścieżka:** Menu boczne → **Stanowiska** → **Lista stanowisk**
+**Ścieżka:** Menu → **Import danych** → **Import pracowników**
 
-### Lista stanowisk
+### Wymagane pliki
 
-Widok przedstawia karty wszystkich aktywnych stanowisk magazynowych. Każda karta zawiera:
+Wgraj jeden lub oba:
 
-- **Nazwa** stanowiska i jego status (Aktywne / Nieaktywne)
-- **Pasek obsady** — pokazuje, ilu pracowników jest przypisanych do stanowiska w stosunku do maksymalnej liczby miejsc
-  - Zielony pasek: stanowisko zajęte poniżej 70%
-  - Żółty pasek: zajęte w 70–90%
-  - Czerwony pasek: zajęte powyżej 90%
-- **Tabela parametrów** — wymagana siła, poziom chodzenia, siedzenia, powtarzalność, praca na zewnątrz
-- Przycisk **Szczegóły i obsada** prowadzący do widoku szczegółowego
+| Plik | Co zawiera |
+|---|---|
+| `KOMPETENCJE_PRACOWNIKÓW_ACT_NEW.xlsx` | Lista pracowników, oceny kompetencji dla każdej aktywności, `zmiana_grupa` (kol. L) |
+| `Struktura___Grafik___Absencje_NEW.xlsx` | Dane kadrowe (stanowisko, dział, zmiana, przełożony), absencje; `zmiana_grupa` z kolumny „Zmiana grupa" |
 
-### Szczegóły stanowiska
+> **Każdy import zastępuje całą listę pracowników.** Skasowanie nie może być cofnięte — dane można przywrócić tylko przez ponowny import.
 
-Po kliknięciu **Szczegóły i obsada** otwiera się widok szczegółowy stanowiska. Zawiera:
+### Jak działa scalanie plików
 
-**Parametry stanowiska** — pełna lista wymagań fizycznych: wymagana siła, zakres dźwigania, poziom chodzenia, siedzenia, powtarzalność, praca stojąca, monitor, komputer, praca na zewnątrz, maksymalna liczba pracowników.
+Gdy wgrasz oba pliki jednocześnie, dane z pliku Struktury **nadpisują** dane z KOMPETENCJE dla tych samych pracowników (dopasowanie po nazwisku + imieniu). Wgranie samego pliku KOMPETENCJE też zapisuje `zmiana_grupa` — z kolumny L tego pliku.
 
-**Pasek obsady** — aktualny procent zapełnienia stanowiska (liczba pracowników przypisanych do stanowiska / liczba maksymalna).
+### Krok 1 — wgranie i podgląd
 
-**Lista pracowników** — tabela z imionami i nazwiskami wszystkich pracowników, którzy mają to stanowisko w swoim portfolio. Kolumny tabeli:
-- Numer porządkowy
-- Imię i nazwisko
-- Inne stanowiska pracownika (jako odznaki)
-- Data ostatniej aktualizacji danych pracownika
+1. Wskaż pliki w odpowiednich polach.
+2. Kliknij **Wgraj i podejrzyj**.
+3. Sprawdź podgląd: liczba pracowników, wypełnione grupy zmian, liczba kompetencji.
 
-Jeśli żaden pracownik nie jest przypisany do stanowiska, wyświetlany jest komunikat z podpowiedzią, aby wykonać import pliku.
+### Krok 2 — zatwierdzenie
+
+1. Kliknij **Zatwierdź — zastąp wszystkich pracowników**.
+2. System usunie poprzednią listę i wstawi nową wraz z kompetencjami i absencjami.
+
+### Wskazówki
+
+- Wgraj oba pliki jednocześnie, aby uzyskać pełny profil (kompetencje + dane kadrowe + absencje).
+- Po reimporcie **przelicz ponownie** plany, aby wyniki przydziału odzwierciedlały nowe dane.
+- Jeśli widzisz pracowników bez grupy zmiany w wynikach przydziału — sprawdź, czy kolumna L (KOMPETENCJE) lub „Zmiana grupa" (Struktura) jest wypełniona w pliku.
 
 ---
 
-*Instrukcja obsługi — System Magazynowy v1.1 | 2026-05-26*
+## 8.3 Import pracowników APT
+
+**Ścieżka:** Menu → **Import danych** → **Import pracowników APT**
+
+### Krok 0 — konfiguracja mapowania kolumn (jednorazowe)
+
+Plik APT zawiera 14 kolumn z ocenami (numery 1–14). Musisz przypisać każdej kolumnie nazwę działu.
+
+1. W sekcji **Mapowanie kolumn APT** wypełnij pola 1–14.
+2. Kliknij **Zapisz mapowanie**.
+
+Mapowanie jest zapamiętywane — nie trzeba go ustawiać przy każdym imporcie.
+
+### Krok 1 — wgranie i podgląd
+
+1. Wskaż plik `PracownicyAPT*.xlsx`.
+2. Kliknij **Parsuj i podejrzyj**.
+3. Sprawdź podgląd: nazwisko, imię, agencja, płeć, grupa, liczba ocen > 0.
+
+### Krok 2 — zatwierdzenie
+
+1. Kliknij **Zatwierdź — zastąp wszystkich pracowników APT**.
+2. Poprzedni lista APT jest usuwana i zastępowana nową.
+
+---
+
+## 9. Stanowiska
+
+**Ścieżka:** Menu → **Stanowiska**
+
+Widok kart stanowisk magazynowych. Każda karta zawiera parametry fizyczne (wymagana siła, chodzenie, siedzenie, powtarzalność) i pasek obsady.
+
+> **Uwaga:** liczby obsady są aktualnie niedostępne (stub: 0) — moduł jest w trakcie integracji.
+
+### Zarządzanie stanowiskami
+
+- **Dodaj stanowisko** — formularz z pełnymi parametrami
+- **Edytuj** / **Usuń** — ikony przy karcie stanowiska
+
+---
+
+*Instrukcja obsługi — System Magazynowy v2.1 | 2026-07-04*

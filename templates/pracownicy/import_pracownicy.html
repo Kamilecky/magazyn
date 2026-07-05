@@ -1,0 +1,174 @@
+{% extends 'base.html' %}
+{% block title %}Import listy pracowników{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-4">
+  <i class="bi bi-people-fill fs-3 text-success"></i>
+  <div class="flex-grow-1">
+    <h4 class="mb-0">Import listy pracowników</h4>
+    <small class="text-muted">Pliki kompetencji i/lub struktury/grafiku (oba opcjonalne, lecz co najmniej jeden wymagany)</small>
+  </div>
+  {% if pracownicy_count %}
+  <a href="{% url 'pracownicy:lista' %}" class="btn btn-outline-success btn-sm">
+    <i class="bi bi-people me-1"></i>Pracownicy w bazie ({{ pracownicy_count }})
+  </a>
+  {% endif %}
+</div>
+
+{% if not tmp_uuid %}
+<!-- ═══ KROK 1: Upload ═══ -->
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="card shadow-sm">
+      <div class="card-header fw-semibold">
+        <i class="bi bi-upload me-2 text-success"></i>Wybierz pliki
+      </div>
+      <div class="card-body">
+        <form method="post" enctype="multipart/form-data" id="uploadForm">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="upload">
+
+          <div class="mb-4">
+            <label class="form-label fw-semibold">
+              <i class="bi bi-grid-3x3 me-1 text-primary"></i>Plik kompetencji
+              <span class="badge bg-light text-dark border ms-1">opcjonalny</span>
+            </label>
+            <input type="file" name="plik_kompetencje" class="form-control" accept=".xlsx">
+            <div class="form-text">
+              <strong>KOMPETENCJE_PRACOWNIKÓW_ACT_NEW.xlsx</strong> — arkusz „Wynik finalny"
+              z 3-poziomowym nagłówkiem (Dział / Poddział / Aktywność) i macierzą wyników 0–50.
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <label class="form-label fw-semibold">
+              <i class="bi bi-calendar3 me-1 text-warning"></i>Plik struktury / grafiku / absencji
+              <span class="badge bg-light text-dark border ms-1">opcjonalny</span>
+            </label>
+            <input type="file" name="plik_struktura" class="form-control" accept=".xlsx">
+            <div class="form-text">
+              <strong>Struktura___Grafik___Absencje_NEW.xlsx</strong> — arkusze
+              Struktura IB / OB / FF / PR / ZW z grafikiem i absencjami per dział.
+            </div>
+          </div>
+
+          <div class="alert alert-warning small py-2">
+            <i class="bi bi-exclamation-triangle-fill me-1"></i>
+            <strong>Uwaga:</strong> Potwierdzenie importu <strong>zastąpi</strong> wszystkich istniejących
+            pracowników w bazie danych. Operacji nie można cofnąć.
+          </div>
+
+          <button type="submit" class="btn btn-success" id="submitBtn">
+            <span class="spinner-border spinner-border-sm me-1" id="spinner" style="display:none"></span>
+            <i class="bi bi-search me-1" id="searchIcon"></i>Parsuj i podejrzyj
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% else %}
+<!-- ═══ KROK 2: Podgląd i potwierdzenie ═══ -->
+<div class="row g-3 mb-3">
+  <div class="col-sm-4">
+    <div class="card text-center border-success">
+      <div class="card-body py-2">
+        <div class="fs-4 fw-bold text-success">{{ stats.total_pracownikow }}</div>
+        <div class="small text-muted">pracowników</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-4">
+    <div class="card text-center border-primary">
+      <div class="card-body py-2">
+        <div class="fs-4 fw-bold text-primary">{{ stats.total_kompetencji }}</div>
+        <div class="small text-muted">kompetencji (wynik &gt; 0)</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-4">
+    <div class="card text-center border-warning">
+      <div class="card-body py-2">
+        <div class="fs-4 fw-bold text-warning">{{ stats.total_absencji }}</div>
+        <div class="small text-muted">absencji</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if plik_kompetencje_nazwa or plik_struktura_nazwa %}
+<div class="mb-3 small text-muted">
+  {% if plik_kompetencje_nazwa %}
+    <i class="bi bi-file-earmark-excel me-1 text-success"></i>{{ plik_kompetencje_nazwa }}
+  {% endif %}
+  {% if plik_struktura_nazwa %}
+    &nbsp;<i class="bi bi-file-earmark-excel me-1 text-warning"></i>{{ plik_struktura_nazwa }}
+  {% endif %}
+</div>
+{% endif %}
+
+{% if ostrzezenia %}
+<div class="alert alert-warning">
+  <strong><i class="bi bi-exclamation-triangle-fill me-1"></i>Ostrzeżenia ({{ ostrzezenia|length }}):</strong>
+  <ul class="mb-0 mt-1">{% for o in ostrzezenia %}<li>{{ o }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<div class="card shadow-sm mb-3">
+  <div class="card-header fw-semibold">
+    <i class="bi bi-table me-1 text-success"></i>Podgląd — pierwsze {{ podglad|length }} pracowników
+    {% if stats.total_pracownikow > podglad|length %}
+      <span class="badge bg-secondary">z {{ stats.total_pracownikow }}</span>
+    {% endif %}
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Nazwisko</th><th>Imię</th><th>Dział</th>
+          <th>Zmiana</th><th>Zmiana gr.</th>
+          <th class="text-end">Kompetencji</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in podglad %}
+        <tr>
+          <td class="fw-semibold">{{ p.nazwisko }}</td>
+          <td>{{ p.imie }}</td>
+          <td><span class="badge bg-light text-dark border">{{ p.dzial|default:"—" }}</span></td>
+          <td>{{ p.zmiana|default:"—" }}</td>
+          <td>{{ p.zmiana_grupa|default:"—" }}</td>
+          <td class="text-end text-primary fw-semibold">{{ p.kompetencje|length }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="d-flex gap-2">
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="confirm">
+    <input type="hidden" name="tmp_uuid" value="{{ tmp_uuid }}">
+    <button type="submit" class="btn btn-success">
+      <i class="bi bi-check-lg me-1"></i>Zatwierdź — zastąp wszystkich pracowników
+    </button>
+  </form>
+  <a href="{% url 'import_danych:import_pracownicy' %}" class="btn btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Wróć (anuluj)
+  </a>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('uploadForm')?.addEventListener('submit', function () {
+  document.getElementById('spinner').style.display = 'inline-block';
+  document.getElementById('searchIcon').style.display = 'none';
+  document.getElementById('submitBtn').disabled = true;
+});
+</script>
+{% endblock %}

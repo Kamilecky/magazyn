@@ -1,519 +1,106 @@
 {% extends 'base.html' %}
-{% block title %}Plany zmian{% endblock %}
-
-{% block extra_css %}
-<style>
-  .edit-drop {
-    position: absolute; z-index: 1060;
-    width: 100%; max-height: 180px; overflow-y: auto;
-    box-shadow: 0 4px 12px rgba(0,0,0,.15);
-  }
-</style>
-{% endblock %}
+{% block title %}Plany dzienne{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h4 class="mb-0"><i class="bi bi-calendar3"></i> Plany zmian</h4>
-  <div class="d-flex gap-2">
-    <a href="{% url 'pracownicy:import_plan_poranny' %}" class="btn btn-outline-warning btn-sm">
-      <i class="bi bi-sun-fill"></i> Poranny
-    </a>
-    <a href="{% url 'pracownicy:import_plan_popobudniowy' %}" class="btn btn-sm" style="border:1px solid #fd7e14;color:#fd7e14">
-      <i class="bi bi-sun-fill"></i> Popołudniowy
-    </a>
-    <a href="{% url 'pracownicy:import_plan_nocny' %}" class="btn btn-outline-primary btn-sm">
-      <i class="bi bi-moon-fill"></i> Nocny
-    </a>
-  </div>
+  <h4 class="mb-0"><i class="bi bi-calendar3"></i> Plany dzienne</h4>
+  <a href="{% url 'import_danych:import_plan_zmianowy' %}" class="btn btn-primary btn-sm">
+    <i class="bi bi-upload me-1"></i>Import planu zmianowego
+  </a>
 </div>
 
 {% if plany %}
 <div class="row g-3">
-  {% for item in plany %}
-  {% with plan=item.plan %}
+  {% for plan in plany %}
   <div class="col-md-6 col-xl-4">
     <div class="card h-100 shadow-sm">
       <div class="card-body">
-        <!-- Nagłówek kafelka -->
-        <div class="d-flex align-items-center gap-3 mb-3">
-          {% if plan.zmiana == 'poranny' %}
-          <i class="bi bi-sun-fill text-warning fs-2"></i>
-          {% elif plan.zmiana == 'popobudniowy' %}
-          <i class="bi bi-sun-fill fs-2" style="color:#fd7e14"></i>
-          {% else %}
-          <i class="bi bi-moon-fill text-primary fs-2"></i>
-          {% endif %}
-          <div>
-            <h6 class="fw-bold mb-0">
-              Plan {{ plan.data_importu|date:"d.m.Y" }}
-              {% if plan.zmiana == 'poranny' %}poranny
-              {% elif plan.zmiana == 'popobudniowy' %}popołudniowy
-              {% else %}nocny{% endif %}
+        <div class="d-flex align-items-start gap-3 mb-2">
+          <i class="bi bi-calendar-week-fill fs-2 text-primary mt-1"></i>
+          <div class="flex-grow-1 min-w-0">
+            <h6 class="fw-bold mb-0 text-truncate" title="{{ plan.nazwa_pliku }}">
+              {{ plan.nazwa_pliku }}
             </h6>
-            <div class="small text-muted">{{ plan.nazwa_pliku }}</div>
-          </div>
-          {% if plan.dopasowane_at %}
-          <span class="badge bg-success ms-auto">Dopasowano</span>
-          {% else %}
-          <span class="badge bg-secondary ms-auto">Nie dopasowano</span>
-          {% endif %}
-        </div>
-
-        <!-- Stanowiska z planu -->
-        {% if item.stanowiska %}
-        <div class="mb-2">
-          <div class="small text-muted fw-bold mb-1">Wymagana obsada:</div>
-          <div class="d-flex flex-wrap gap-1">
-            {% for s in item.stanowiska %}
-            <span class="badge bg-light text-dark border stanowisko-kafel"
-                  data-stanowisko="{{ s.stanowisko }}"
-                  data-workers='{{ s.workers_json }}'>
-              {{ s.stanowisko }}
-              <span class="badge bg-secondary ms-1">{{ s.obsada }}</span>
-            </span>
-            {% endfor %}
-          </div>
-        </div>
-        <div class="small text-muted mb-2">
-          Łącznie: {{ plan.total_obsada }} miejsc w {{ plan.dane_raw|length }} stanowiskach
-        </div>
-        {% endif %}
-
-        {% if plan.dopasowane_at and item.total_dopasowanych > 0 %}
-        <div class="small text-muted">
-          <i class="bi bi-check-circle-fill text-success"></i>
-          Dopasowano {{ item.total_dopasowanych }} pracowników
-          ({{ plan.dopasowane_at|date:"d.m.Y H:i" }})
-        </div>
-        {% endif %}
-      </div>
-
-      <div class="card-footer bg-transparent d-flex gap-2">
-        <button type="button" class="btn btn-primary btn-sm flex-grow-1"
-                data-bs-toggle="modal" data-bs-target="#modalDopasuj{{ plan.pk }}">
-          <i class="bi bi-people-fill me-1"></i>Dopasuj obsadę
-        </button>
-        <button type="button" class="btn btn-outline-secondary btn-sm"
-                title="Edytuj obsadę ręcznie"
-                onclick="EditModal.open({{ plan.pk }})">
-          <i class="bi bi-pencil-square"></i>
-        </button>
-        <form method="post" action="{% url 'pracownicy:zmien_typ_planu' plan.pk %}">
-          {% csrf_token %}
-          <button type="submit" class="btn btn-outline-secondary btn-sm" title="Zmień typ zmiany">
-            <i class="bi bi-arrow-repeat"></i>
-          </button>
-        </form>
-        <a href="{% url 'pracownicy:plan_pdf' plan.pk %}"
-           class="btn btn-outline-danger btn-sm" title="Pobierz PDF">
-          <i class="bi bi-file-earmark-pdf"></i>
-        </a>
-        <form method="post" action="{% url 'pracownicy:usun_plan' plan.pk %}"
-              onsubmit="return confirm('Usunąć ten plan?')">
-          {% csrf_token %}
-          <button type="submit" class="btn btn-outline-danger btn-sm" title="Usuń plan">
-            <i class="bi bi-trash3"></i>
-          </button>
-        </form>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal potwierdzenia automatycznego dopasowania -->
-  <div class="modal fade" id="modalDopasuj{{ plan.pk }}" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content">
-        <div class="modal-header border-0">
-          <h5 class="modal-title">
-            {% if plan.zmiana == 'poranny' %}<i class="bi bi-sun-fill text-warning me-2"></i>
-            {% elif plan.zmiana == 'popobudniowy' %}<i class="bi bi-sun-fill me-2" style="color:#fd7e14"></i>
-            {% else %}<i class="bi bi-moon-fill text-primary me-2"></i>{% endif %}
-            Dopasowanie obsady
-          </h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-          <p>Czy na pewno chcesz dopasować obsadę do stanowisk z planu
-            <strong>{{ plan.data_importu|date:"d.m.Y" }}
-            {% if plan.zmiana == 'poranny' %}porannego{% elif plan.zmiana == 'popobudniowy' %}popołudniowego{% else %}nocnego{% endif %}</strong>?
-          </p>
-          <p class="text-muted small mb-0">
-            System wyszuka pracowników z pasującym doświadczeniem i przypisze ich do stanowisk.
-            {% if plan.dopasowane_at %}
-            <br><span class="text-warning"><i class="bi bi-exclamation-triangle"></i>
-            Plan był już dopasowany — wyniki zostaną zastąpione.</span>
+            {% if plan.data_planu %}
+            <div class="fw-semibold text-primary small mt-1">
+              <i class="bi bi-calendar3 me-1"></i>{{ plan.data_planu|date:"d.m.Y (l)" }}
+            </div>
             {% endif %}
-          </p>
+            <div class="small text-muted">
+              import {{ plan.data_importu|date:"d.m.Y H:i" }}
+              {% if plan.importowany_przez %}
+                &middot; {{ plan.importowany_przez.get_username }}
+              {% endif %}
+            </div>
+          </div>
         </div>
-        <div class="modal-footer border-0">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Nie</button>
-          <form method="post" action="{% url 'pracownicy:dopasuj_plan' plan.pk %}">
+
+        <div class="row g-2 text-center mt-1">
+          <div class="col-6">
+            <div class="bg-light rounded p-2">
+              <div class="fw-bold text-primary fs-5">{{ plan.total_aktywnosci }}</div>
+              <div class="small text-muted">aktywności</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="bg-light rounded p-2">
+              <div class="fw-bold fs-5">{{ plan.total_rekordow }}</div>
+              <div class="small text-muted">rek. godzinowych</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-footer bg-transparent d-flex flex-column gap-2">
+
+        {% if plan.przydzial %}
+        <div class="d-flex gap-2">
+          <a href="{% url 'pracownicy:wyniki_przydzialu' plan.pk %}" class="btn btn-success btn-sm flex-grow-1">
+            <i class="bi bi-table me-1"></i>Wyniki przydziału
+          </a>
+          <form method="post" action="{% url 'pracownicy:przydziel_plan' plan.pk %}" class="m-0">
             {% csrf_token %}
-            <button type="submit" class="btn btn-primary">
-              <i class="bi bi-people-fill me-1"></i>Tak, dopasuj
+            <button type="submit" class="btn btn-outline-secondary btn-sm" title="Przelicz ponownie"
+                    onclick="return confirm('Przeliczenie nadpisze istniejący przydział. Kontynuować?')">
+              <i class="bi bi-arrow-clockwise"></i>
             </button>
           </form>
         </div>
+        <div class="text-muted small text-center">
+          Przydział z {{ plan.przydzial.data_przydzialu|date:"d.m.Y H:i" }}
+        </div>
+        {% else %}
+        <form method="post" action="{% url 'pracownicy:przydziel_plan' plan.pk %}" class="m-0">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-primary btn-sm w-100">
+            <i class="bi bi-people-fill me-1"></i>Przypisz pracowników
+          </button>
+        </form>
+        {% endif %}
+
+        <form method="post" action="{% url 'pracownicy:usun_plan' plan.pk %}"
+              onsubmit="return confirm('Usunąć plan {{ plan.nazwa_pliku|escapejs }}? Zostaną usunięte wszystkie powiązane rekordy godzinowe.')">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-outline-danger btn-sm w-100">
+            <i class="bi bi-trash3 me-1"></i>Usuń plan
+          </button>
+        </form>
+
       </div>
     </div>
   </div>
-  {% endwith %}
   {% endfor %}
 </div>
 {% else %}
 <div class="text-center py-5 text-muted">
   <i class="bi bi-calendar-x fs-1 d-block mb-2"></i>
-  Brak zaimportowanych planów zmian.<br>
-  <small>Zaimportuj plan dzienny lub nocny, aby zobaczyć go tutaj.</small>
-  <div class="mt-3 d-flex justify-content-center gap-2">
-    <a href="{% url 'pracownicy:import_plan_poranny' %}" class="btn btn-outline-warning btn-sm">
-      <i class="bi bi-sun-fill"></i> Poranny
-    </a>
-    <a href="{% url 'pracownicy:import_plan_popobudniowy' %}" class="btn btn-sm" style="border:1px solid #fd7e14;color:#fd7e14">
-      <i class="bi bi-sun-fill"></i> Popołudniowy
-    </a>
-    <a href="{% url 'pracownicy:import_plan_nocny' %}" class="btn btn-outline-primary btn-sm">
-      <i class="bi bi-moon-fill"></i> Nocny
+  Brak zaimportowanych planów dziennych.<br>
+  <small>Zaimportuj plik Plan_dzienny_NEW.xlsx, aby zobaczyć go tutaj.</small>
+  <div class="mt-3">
+    <a href="{% url 'import_danych:import_plan_zmianowy' %}" class="btn btn-primary btn-sm">
+      <i class="bi bi-upload me-1"></i>Import planu zmianowego
     </a>
   </div>
 </div>
 {% endif %}
-
-<!-- Modal: podgląd zespołu stanowiska (kliknięcie odznaki) -->
-<div class="modal fade" id="modalZespol" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered modal-lg">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">
-          <i class="bi bi-people-fill me-2 text-primary"></i>
-          <span id="modalZespolTytul"></span>
-        </h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body p-0" id="modalZespolBody"></div>
-      <div class="modal-footer border-0">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Zamknij</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Modal: ręczna edycja dopasowania -->
-<div class="modal fade" id="modalEdytuj" tabindex="-1" aria-hidden="true"
-     data-bs-backdrop="static" data-bs-keyboard="false">
-  <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-pencil-square me-2"></i>Edycja obsady</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body p-0" id="editModalBody">
-        <div class="text-center py-5">
-          <div class="spinner-border text-primary" role="status"></div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
-        <button type="button" class="btn btn-success" id="editSaveBtn" onclick="EditModal.save()">
-          <span class="spinner-border spinner-border-sm me-1" id="editSaveSpinner"
-                style="display:none" role="status"></span>
-          <i class="bi bi-check-lg me-1"></i>Zapisz zmiany
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
-{% endblock %}
-
-{% block extra_js %}
-<script>
-/* ── Podgląd zespołu stanowiska (kliknięcie odznaki) ──────────────────── */
-(function () {
-  'use strict';
-  const modalEl    = document.getElementById('modalZespol');
-  const modalBS    = new bootstrap.Modal(modalEl);
-  const modalTitle = document.getElementById('modalZespolTytul');
-  const modalBody  = document.getElementById('modalZespolBody');
-
-  document.querySelectorAll('.stanowisko-kafel').forEach(el => {
-    el.style.cursor = 'pointer';
-    el.addEventListener('click', function () {
-      const stanowisko = this.dataset.stanowisko;
-      let workers = [];
-      try { workers = JSON.parse(this.dataset.workers || '[]'); } catch (_) {}
-      modalTitle.textContent = stanowisko;
-      if (!workers.length) {
-        modalBody.innerHTML = `<div class="text-center py-5 text-muted">
-          <i class="bi bi-inbox fs-1 d-block mb-2"></i>
-          Brak dopasowanych pracowników.<br>
-          <small>Użyj „Dopasuj obsadę" lub „Edytuj obsadę".</small></div>`;
-      } else {
-        const rows = workers.map((w, i) => {
-          const dosw = (w.doswiadczenie || [])
-            .map(d => `<span class="badge bg-light text-dark border me-1">${d}</span>`).join('') ||
-            '<span class="text-muted small">—</span>';
-          return `<tr>
-            <td class="text-muted ps-3" style="width:44px">${i+1}</td>
-            <td class="fw-semibold">${w.imie} ${w.nazwisko}</td>
-            <td>${dosw}</td></tr>`;
-        }).join('');
-        modalBody.innerHTML = `<div class="table-responsive">
-          <table class="table table-hover mb-0">
-            <thead class="table-light">
-              <tr><th class="ps-3" style="width:44px">#</th>
-                  <th>Imię i nazwisko</th><th>Doświadczenie</th></tr>
-            </thead><tbody>${rows}</tbody></table></div>`;
-      }
-      modalBS.show();
-    });
-  });
-})();
-
-/* ── Ręczna edycja dopasowania ────────────────────────────────────────── */
-const EditModal = (function () {
-  'use strict';
-
-  let _pk   = null;
-  let _raw  = [];   // [{stanowisko, obsada}]
-  let _dop  = {};   // {stanowisko: [{imie, nazwisko, doswiadczenie}]}
-  let _wszyscy = []; // [{imie, nazwisko, doswiadczenie}]
-  let _results = {}; // sid -> filtered array (for dropdown clicks)
-  let _bsModal = null;
-
-  const body    = () => document.getElementById('editModalBody');
-  const saveBtn = () => document.getElementById('editSaveBtn');
-  const spinner = () => document.getElementById('editSaveSpinner');
-
-  function sid(str) { return str.replace(/[^a-zA-Z0-9]/g, '_'); }
-  function esc(s)   { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-
-  function getCsrf() {
-    const m = document.cookie.match(/csrftoken=([^;]+)/);
-    return m ? m[1] : '';
-  }
-
-  /* ── public: open ── */
-  function open(pk) {
-    _pk = pk;
-    if (!_bsModal) {
-      _bsModal = new bootstrap.Modal(document.getElementById('modalEdytuj'),
-                                     { backdrop: 'static', keyboard: false });
-    }
-    renderLoading();
-    _bsModal.show();
-
-    fetch(`/pracownicy/plany/${pk}/dane-edycji/`)
-      .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(data => {
-        _raw     = data.dane_raw     || [];
-        _dop     = JSON.parse(JSON.stringify(data.dopasowanie || {}));
-        _wszyscy = data.wszyscy_pracownicy || [];
-        render();
-      })
-      .catch(() => {
-        body().innerHTML = '<div class="text-center py-4 text-danger p-3">Błąd ładowania danych.</div>';
-      });
-  }
-
-  function renderLoading() {
-    body().innerHTML = `<div class="text-center py-5">
-      <div class="spinner-border text-primary" role="status"></div>
-      <div class="mt-2 text-muted small">Ładowanie…</div></div>`;
-  }
-
-  /* ── render całej zawartości modala ── */
-  function render() {
-    if (!_raw.length) {
-      body().innerHTML = '<div class="p-3 text-muted">Brak stanowisk w planie.</div>';
-      return;
-    }
-
-    let html = '';
-    _raw.forEach((wpis, idx) => {
-      const stan   = wpis.stanowisko;
-      const obsada = parseInt(wpis.obsada) || 0;
-      const prac   = _dop[stan] || [];
-      const s      = sid(stan);
-      const border = idx < _raw.length - 1 ? 'border-bottom' : '';
-
-      html += `<div class="p-3 ${border}">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <strong>${esc(stan)}</strong>
-          <span class="badge" id="cnt_${s}"
-                style="background:${cntColor(prac.length, obsada)};font-size:.85em">
-            ${prac.length}/${obsada}
-          </span>
-        </div>
-        <div id="lista_${s}">${renderList(stan, prac)}</div>
-        <div class="position-relative mt-2">
-          <input type="text" class="form-control form-control-sm"
-                 id="inp_${s}"
-                 placeholder="Dodaj pracownika — wpisz imię lub nazwisko…"
-                 autocomplete="off">
-          <div class="list-group edit-drop" id="drop_${s}" style="display:none"></div>
-        </div>
-      </div>`;
-    });
-
-    body().innerHTML = html;
-
-    /* event listeners po wyrenderowaniu */
-    _raw.forEach(wpis => {
-      const stan = wpis.stanowisko;
-      const s    = sid(stan);
-      const inp  = document.getElementById(`inp_${s}`);
-      const drop = document.getElementById(`drop_${s}`);
-      if (!inp) return;
-
-      inp.addEventListener('input',  () => updateDropdown(stan, inp.value));
-      inp.addEventListener('focus',  () => updateDropdown(stan, inp.value));
-      inp.addEventListener('blur',   () => { setTimeout(() => { drop.style.display='none'; }, 200); });
-    });
-
-    /* delegacja kliknięć w liście przypisanych (usuń) */
-    body().addEventListener('click', onBodyClick);
-  }
-
-  function onBodyClick(e) {
-    const btn = e.target.closest('[data-rm-stan]');
-    if (btn) {
-      const stan = btn.dataset.rmStan;
-      const idx  = parseInt(btn.dataset.rmIdx);
-      removeWorker(stan, idx);
-    }
-  }
-
-  function renderList(stan, pracownicy) {
-    if (!pracownicy.length) {
-      return '<div class="text-muted small fst-italic mb-1">Brak przypisanych pracowników</div>';
-    }
-    return pracownicy.map((w, i) => `
-      <div class="d-flex align-items-center gap-2 mb-1">
-        <span class="flex-grow-1 small">${esc(w.imie)} ${esc(w.nazwisko)}</span>
-        <button type="button" class="btn btn-outline-danger btn-sm py-0 px-1"
-                title="Usuń" data-rm-stan="${esc(stan)}" data-rm-idx="${i}">
-          <i class="bi bi-trash3"></i>
-        </button>
-      </div>`).join('');
-  }
-
-  function cntColor(x, y) {
-    return x >= y ? '#198754' : (x > 0 ? '#fd7e14' : '#dc3545');
-  }
-
-  function refreshStation(stan) {
-    const obsada = (_raw.find(w => w.stanowisko === stan) || {}).obsada || 0;
-    const prac   = _dop[stan] || [];
-    const s      = sid(stan);
-    const lista  = document.getElementById(`lista_${s}`);
-    const cnt    = document.getElementById(`cnt_${s}`);
-    if (lista) lista.innerHTML = renderList(stan, prac);
-    if (cnt)   { cnt.textContent = `${prac.length}/${obsada}`; cnt.style.background = cntColor(prac.length, parseInt(obsada)); }
-  }
-
-  /* ── public: removeWorker ── */
-  function removeWorker(stan, idx) {
-    if (!_dop[stan]) return;
-    _dop[stan].splice(idx, 1);
-    refreshStation(stan);
-  }
-
-  /* ── dropdown ── */
-  function assignedMap() {
-    const map = {};
-    for (const [stan, workers] of Object.entries(_dop)) {
-      for (const w of workers) {
-        const key = `${w.imie}|${w.nazwisko}`;
-        if (!map[key]) map[key] = stan;
-      }
-    }
-    return map;
-  }
-
-  function updateDropdown(stan, query) {
-    const s    = sid(stan);
-    const drop = document.getElementById(`drop_${s}`);
-    if (!drop) return;
-
-    const q = (query || '').toLowerCase().trim();
-    const amap = assignedMap();
-
-    const filtered = _wszyscy.filter(p => {
-      const name = `${p.imie} ${p.nazwisko}`.toLowerCase();
-      return !q || name.includes(q);
-    }).slice(0, 25);
-
-    _results[s] = filtered;
-
-    if (!filtered.length) { drop.style.display = 'none'; return; }
-
-    drop.innerHTML = filtered.map((p, i) => {
-      const key = `${p.imie}|${p.nazwisko}`;
-      const aw  = amap[key];
-      const already = _dop[stan] && _dop[stan].some(w => w.imie === p.imie && w.nazwisko === p.nazwisko);
-      let badge = '';
-      if (already) badge = '<span class="ms-1 text-muted small">(już na tym stanowisku)</span>';
-      else if (aw)  badge = `<span class="ms-1 text-warning small">* przypisany: ${esc(aw)}</span>`;
-      const dosw = (p.doswiadczenie || []).join(', ');
-      return `<button type="button"
-                      class="list-group-item list-group-item-action py-1 px-2 small"
-                      data-drop-sid="${esc(s)}" data-drop-idx="${i}">
-        <strong>${esc(p.imie)} ${esc(p.nazwisko)}</strong>${badge}
-        ${dosw ? `<br><span class="text-muted">${esc(dosw)}</span>` : ''}
-      </button>`;
-    }).join('');
-
-    drop.style.display = 'block';
-
-    /* kliknięcie w dropdown (mousedown żeby nie utracić focus przed blur) */
-    drop.querySelectorAll('[data-drop-sid]').forEach(btn => {
-      btn.addEventListener('mousedown', e => {
-        e.preventDefault();
-        const s2  = btn.dataset.dropSid;
-        const idx = parseInt(btn.dataset.dropIdx);
-        const worker = (_results[s2] || [])[idx];
-        if (!worker) return;
-        const st = _raw.find(w => sid(w.stanowisko) === s2)?.stanowisko;
-        if (!st) return;
-        if (!_dop[st]) _dop[st] = [];
-        _dop[st].push({ imie: worker.imie, nazwisko: worker.nazwisko, doswiadczenie: worker.doswiadczenie || [] });
-        refreshStation(st);
-        const inp = document.getElementById(`inp_${s2}`);
-        if (inp) inp.value = '';
-        drop.style.display = 'none';
-      });
-    });
-  }
-
-  /* ── public: save ── */
-  function save() {
-    if (saveBtn()) saveBtn().disabled = true;
-    if (spinner()) spinner().style.display = 'inline-block';
-
-    fetch(`/pracownicy/plany/${_pk}/edytuj-dopasowanie/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
-      body: JSON.stringify({ dopasowanie: _dop }),
-    })
-    .then(r => r.json())
-    .then(data => {
-      if (data.status === 'ok') {
-        _bsModal.hide();
-        window.location.reload();
-      } else {
-        alert('Błąd zapisu: ' + (data.error || 'nieznany błąd'));
-        if (saveBtn()) saveBtn().disabled = false;
-        if (spinner()) spinner().style.display = 'none';
-      }
-    })
-    .catch(() => {
-      alert('Błąd połączenia z serwerem.');
-      if (saveBtn()) saveBtn().disabled = false;
-      if (spinner()) spinner().style.display = 'none';
-    });
-  }
-
-  return { open, save };
-})();
-</script>
 {% endblock %}

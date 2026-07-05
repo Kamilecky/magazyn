@@ -1,104 +1,232 @@
 {% extends 'base.html' %}
-{% block title %}Zaimportowani pracownicy{% endblock %}
-
-{% block extra_css %}
-<style>
-  .avatar-circle {
-    width: 46px;
-    height: 46px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #0d6efd, #0056b3);
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 700;
-    font-size: 1rem;
-    flex-shrink: 0;
-    letter-spacing: .02em;
-  }
-</style>
-{% endblock %}
+{% block title %}Pracownicy{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h4 class="mb-0"><i class="bi bi-people-fill"></i> Zaimportowani pracownicy</h4>
+  <h4 class="mb-0"><i class="bi bi-people-fill"></i> Pracownicy</h4>
   <div class="d-flex gap-2">
     {% if pracownicy %}
     <button type="button" class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#modalUsunWszystkich">
       <i class="bi bi-trash3"></i> Wyczyść wszystkich
     </button>
     {% endif %}
-    <a href="{% url 'pracownicy:import_excel' %}" class="btn btn-primary btn-sm">
-      <i class="bi bi-upload"></i> Import z Excel
+    <a href="{% url 'import_danych:import_pracownicy' %}" class="btn btn-success btn-sm">
+      <i class="bi bi-upload"></i> Import pracowników
     </a>
   </div>
 </div>
 
 <!-- Pasek wyszukiwania -->
-<div class="card mb-3">
+<form method="get" id="formFiltr" class="card mb-3">
   <div class="card-body py-2">
     <div class="row g-2 align-items-center">
-      <div class="col-md-8">
-        <input type="text" id="szukaj" class="form-control form-control-sm"
-               placeholder="Szukaj po imieniu lub nazwisku…">
+      <div class="col-md-4">
+        <input type="text" name="q" id="szukaj" class="form-control form-control-sm"
+               placeholder="Szukaj po imieniu lub nazwisku…"
+               value="{{ q }}" autocomplete="off">
       </div>
       <div class="col-md-3">
-        <select id="sortuj" class="form-select form-select-sm">
-          <option value="az">Alfabetycznie A–Z</option>
-          <option value="za">Alfabetycznie Z–A</option>
+        <select name="dzial" id="filtrDzial" class="form-select form-select-sm">
+          <option value="">Wszystkie działy</option>
+          {% for dz in dzialy %}
+          <option value="{{ dz }}" {% if dz == dzial_q %}selected{% endif %}>{{ dz }}</option>
+          {% endfor %}
         </select>
       </div>
+      <div class="col-md-2">
+        <select id="sortuj" class="form-select form-select-sm">
+          <option value="az">A–Z</option>
+          <option value="za">Z–A</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <div class="form-check form-switch pt-1">
+          <input class="form-check-input" type="checkbox" name="nieobecni" id="filtrNieobecni"
+                 value="1" {% if nieobecni %}checked{% endif %}>
+          <label class="form-check-label small" for="filtrNieobecni">Tylko nieobecni</label>
+        </div>
+      </div>
       <div class="col-md-1 text-end">
-        <span id="licznikWynikow" class="text-muted small fw-bold">{{ pracownicy|length }}</span>
+        <span class="text-muted small fw-bold">{{ pracownicy.paginator.count }}</span>
       </div>
     </div>
+    {% if q or dzial_q or nieobecni %}
+    <div class="mt-2 d-flex align-items-center gap-2">
+      <small class="text-muted">Filtr aktywny:</small>
+      {% if q %}<span class="badge bg-primary">„{{ q }}"</span>{% endif %}
+      {% if dzial_q %}<span class="badge bg-secondary">{{ dzial_q }}</span>{% endif %}
+      {% if nieobecni %}<span class="badge bg-warning text-dark">nieobecni</span>{% endif %}
+      <a href="{% url 'pracownicy:lista' %}" class="btn btn-outline-secondary btn-sm py-0 px-2">
+        <i class="bi bi-x"></i> Wyczyść
+      </a>
+    </div>
+    {% endif %}
   </div>
+</form>
+
+{% if pracownicy %}
+<div class="table-responsive">
+  <table class="table table-hover align-middle" id="tablePracownicy">
+    <thead class="table-dark">
+      <tr>
+        <th style="width:36px"></th>
+        <th>Nazwisko i imię</th>
+        <th>Dział</th>
+        <th>Zmiana</th>
+        <th>Gr. zmiany</th>
+        <th>Stanowisko</th>
+        <th>Absencje</th>
+        <th class="text-end">Kompetencji</th>
+        <th style="width:50px"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in pracownicy %}
+      <tr class="karta-pracownika"
+          data-imie="{{ p.imie|lower }}"
+          data-nazwisko="{{ p.nazwisko|lower }}"
+          data-dzial="{{ p.dzial|lower }}"
+          data-absencja="{% if p.liczba_absencji %}tak{% else %}nie{% endif %}"
+          data-sortname="{{ p.nazwisko|lower }} {{ p.imie|lower }}">
+        <td>
+          <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold"
+               style="width:32px;height:32px;font-size:.8rem;flex-shrink:0">
+            {{ p.inicjaly }}
+          </div>
+        </td>
+        <td>
+          <span class="fw-semibold">{{ p.nazwisko }}</span> {{ p.imie }}
+          {% if p.nr_ewidencyjny %}
+            <small class="text-muted ms-1">#{{ p.nr_ewidencyjny }}</small>
+          {% endif %}
+        </td>
+        <td>
+          {% if p.dzial %}
+          <span class="badge bg-light text-dark border">{{ p.dzial }}</span>
+          {% else %}<span class="text-muted">—</span>{% endif %}
+        </td>
+        <td>{{ p.zmiana|default:"—" }}</td>
+        <td>{{ p.zmiana_grupa|default:"—" }}</td>
+        <td class="small text-muted">{{ p.stanowisko|default:"—"|truncatechars:25 }}</td>
+        <td>
+          {% if p.absencje_lista %}
+          <div class="d-flex flex-wrap gap-1">
+            {% for a in p.absencje_lista %}
+            {% if forloop.counter <= 3 %}
+            <span class="badge bg-warning text-dark" style="font-size:.72rem"
+                  title="{{ a.typ }}">{{ a.data|date:"d.m.Y" }}</span>
+            {% endif %}
+            {% endfor %}
+            {% if p.liczba_absencji > 3 %}
+            <span class="badge bg-secondary" style="font-size:.72rem"
+                  title="Łącznie {{ p.liczba_absencji }} absencji">+{{ p.liczba_absencji|add:"-3" }}</span>
+            {% endif %}
+          </div>
+          {% else %}
+          <span class="text-muted">—</span>
+          {% endif %}
+        </td>
+        <td class="text-end">
+          {% if p.liczba_kompetencji %}
+          <button type="button"
+                  class="badge bg-primary border-0 btn-kompetencje"
+                  data-pk="{{ p.pk }}"
+                  data-name="{{ p.imie }} {{ p.nazwisko }}"
+                  title="Kliknij, aby zobaczyć kompetencje"
+                  style="cursor:pointer">
+            {{ p.liczba_kompetencji }}
+          </button>
+          {% else %}
+          <span class="text-muted">0</span>
+          {% endif %}
+        </td>
+        <td>
+          <form method="post" action="{% url 'pracownicy:usun_pracownika' p.pk %}"
+                onsubmit="return confirm('Usunąć {{ p.imie }} {{ p.nazwisko }}?')">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-danger btn-sm px-1 py-0" title="Usuń">
+              <i class="bi bi-trash3"></i>
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </div>
 
-<!-- Siatka kart -->
-<div id="kartyGrid" class="row g-3">
-  {% for p in pracownicy %}
-  <div class="col-md-6 col-xl-4 col-xxl-3 karta-pracownika"
-       data-imie="{{ p.imie|lower }}"
-       data-nazwisko="{{ p.nazwisko|lower }}"
-       data-sortname="{{ p.nazwisko|lower }} {{ p.imie|lower }}">
-    <div class="card h-100 shadow-sm">
-      <div class="card-header d-flex align-items-center gap-3 py-3">
-        <div class="avatar-circle">{{ p.imie|slice:":1"|upper }}{{ p.nazwisko|slice:":1"|upper }}</div>
-        <div class="flex-grow-1">
-          <div class="fw-bold">{{ p.imie }} {{ p.nazwisko }}</div>
-          <div class="small text-muted">
-            {% if p.doswiadczenie %}{{ p.doswiadczenie|length }} poz. doświadczenia{% else %}brak doświadczenia{% endif %}
-          </div>
+{% if pracownicy.paginator.num_pages > 1 %}
+<div class="d-flex justify-content-between align-items-center mt-3 px-1">
+  <div class="text-muted small">
+    Strona {{ pracownicy.number }} z {{ pracownicy.paginator.num_pages }}
+    &nbsp;·&nbsp; łącznie {{ pracownicy.paginator.count }} pracowników
+  </div>
+  <ul class="pagination pagination-sm mb-0">
+    {% with fp=filter_params %}
+    {% if pracownicy.has_previous %}
+    <li class="page-item">
+      <a class="page-link" href="?{% if fp %}{{ fp }}&{% endif %}page={{ pracownicy.previous_page_number }}"><i class="bi bi-chevron-left"></i></a>
+    </li>
+    {% else %}
+    <li class="page-item disabled"><span class="page-link"><i class="bi bi-chevron-left"></i></span></li>
+    {% endif %}
+
+    {% if pr_start > 1 %}
+    <li class="page-item"><a class="page-link" href="?{% if fp %}{{ fp }}&{% endif %}page=1">1</a></li>
+    {% if pr_start > 2 %}<li class="page-item disabled"><span class="page-link">…</span></li>{% endif %}
+    {% endif %}
+
+    {% for num in page_range %}
+    <li class="page-item {% if num == pracownicy.number %}active{% endif %}">
+      <a class="page-link" href="?{% if fp %}{{ fp }}&{% endif %}page={{ num }}">{{ num }}</a>
+    </li>
+    {% endfor %}
+
+    {% with last_page=pracownicy.paginator.num_pages %}
+    {% if pr_end < last_page %}
+    {% with last_minus_1=last_page|add:"-1" %}
+    {% if pr_end < last_minus_1 %}<li class="page-item disabled"><span class="page-link">…</span></li>{% endif %}
+    {% endwith %}
+    <li class="page-item"><a class="page-link" href="?{% if fp %}{{ fp }}&{% endif %}page={{ last_page }}">{{ last_page }}</a></li>
+    {% endif %}
+    {% endwith %}
+
+    {% if pracownicy.has_next %}
+    <li class="page-item">
+      <a class="page-link" href="?{% if fp %}{{ fp }}&{% endif %}page={{ pracownicy.next_page_number }}"><i class="bi bi-chevron-right"></i></a>
+    </li>
+    {% else %}
+    <li class="page-item disabled"><span class="page-link"><i class="bi bi-chevron-right"></i></span></li>
+    {% endif %}
+    {% endwith %}
+  </ul>
+</div>
+{% endif %}
+
+{% else %}
+<div class="alert alert-secondary">
+  Brak pracowników w bazie danych.
+  <a href="{% url 'import_danych:import_pracownicy' %}">Zaimportuj pracowników z pliku Excel.</a>
+</div>
+{% endif %}
+
+<!-- Modal: kompetencje pracownika -->
+<div class="modal fade" id="modalKompetencje" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header border-bottom-0 pb-1">
+        <h5 class="modal-title" id="modalKompetencjeTitle">
+          <i class="bi bi-grid-3x3 me-2 text-primary"></i>Kompetencje
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-2" id="modalKompetencjeBody">
+        <div class="text-center py-4">
+          <div class="spinner-border text-primary" role="status"></div>
         </div>
-        <form method="post" action="{% url 'pracownicy:usun_pracownika' p.pk %}"
-              onsubmit="return confirm('Usunąć {{ p.imie }} {{ p.nazwisko }}?')">
-          {% csrf_token %}
-          <button type="submit" class="btn btn-outline-danger btn-sm" title="Usuń pracownika">
-            <i class="bi bi-trash3"></i>
-          </button>
-        </form>
-      </div>
-      <div class="card-body py-2">
-        {% if p.doswiadczenie %}
-          {% for d in p.doswiadczenie %}
-          <span class="badge bg-light text-dark border me-1 mb-1">{{ d }}</span>
-          {% endfor %}
-        {% else %}
-          <span class="text-muted small"><i class="bi bi-dash-circle"></i> Brak danych o doświadczeniu</span>
-        {% endif %}
       </div>
     </div>
   </div>
-  {% empty %}
-  <div class="col-12">
-    <div class="alert alert-secondary">
-      Brak pracowników w bazie danych.
-      <a href="{% url 'pracownicy:import_excel' %}">Zaimportuj pracowników z pliku Excel.</a>
-    </div>
-  </div>
-  {% endfor %}
 </div>
 
 <!-- Modal: usuń wszystkich -->
@@ -110,7 +238,8 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        Czy na pewno chcesz usunąć <strong>wszystkich</strong> zaimportowanych pracowników?<br>
+        Czy na pewno chcesz usunąć <strong>wszystkich</strong> pracowników?<br>
+        Zostaną usunięte też powiązane kompetencje i absencje.<br>
         <span class="text-danger small">Tej operacji nie można cofnąć.</span>
       </div>
       <div class="modal-footer border-0">
@@ -129,39 +258,94 @@
 
 {% block extra_js %}
 <script>
+// ── Modal kompetencji ──────────────────────────────────────────────────────────
 (function () {
   'use strict';
-  const szukaj  = document.getElementById('szukaj');
-  const sortuj  = document.getElementById('sortuj');
-  const grid    = document.getElementById('kartyGrid');
-  const licznik = document.getElementById('licznikWynikow');
+  const modalEl   = document.getElementById('modalKompetencje');
+  const modalInst = new bootstrap.Modal(modalEl);
+  const bodyEl    = document.getElementById('modalKompetencjeBody');
+  const titleEl   = document.getElementById('modalKompetencjeTitle');
 
-  function aktualizuj() {
-    const q    = (szukaj.value || '').toLowerCase().trim();
-    const sort = sortuj.value;
-    const karty = Array.from(grid.querySelectorAll('.karta-pracownika'));
-    let widoczne = 0;
+  document.addEventListener('click', function (e) {
+    const btn = e.target.closest('.btn-kompetencje');
+    if (!btn) return;
+    const pk   = btn.dataset.pk;
+    const name = btn.dataset.name;
+    titleEl.innerHTML = `<i class="bi bi-grid-3x3 me-2 text-primary"></i>Kompetencje — <strong>${name}</strong>`;
+    bodyEl.innerHTML  = '<div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div></div>';
+    modalInst.show();
 
-    karty.forEach(k => {
-      const pasuje = !q || k.dataset.imie.includes(q) || k.dataset.nazwisko.includes(q);
-      k.style.display = pasuje ? '' : 'none';
-      if (pasuje) widoczne++;
-    });
+    fetch(`/pracownicy/${pk}/kompetencje/`)
+      .then(r => r.json())
+      .then(data => {
+        if (!data.kompetencje.length) {
+          bodyEl.innerHTML = '<p class="text-muted text-center py-3">Brak kompetencji.</p>';
+          return;
+        }
 
-    if (licznik) licznik.textContent = widoczne;
+        // Group by department
+        const grouped = {};
+        data.kompetencje.forEach(k => {
+          const d = k.dzial || '—';
+          if (!grouped[d]) grouped[d] = [];
+          grouped[d].push(k);
+        });
 
-    karty
-      .filter(k => k.style.display !== 'none')
-      .sort((a, b) => {
-        const na = a.dataset.sortname || '';
-        const nb = b.dataset.sortname || '';
-        return sort === 'za' ? nb.localeCompare(na, 'pl') : na.localeCompare(nb, 'pl');
+        let html = '';
+        for (const [dzial, komp] of Object.entries(grouped)) {
+          html += `<div class="mb-3">
+            <div class="text-uppercase fw-semibold small text-secondary mb-1"
+                 style="letter-spacing:.05em">${dzial}</div>
+            <table class="table table-sm table-hover mb-0">
+              <tbody>`;
+          komp.forEach(k => {
+            const v = k.wynik;
+            const fmt = Number.isInteger(v) ? v : parseFloat(v.toFixed(2));
+            html += `<tr>
+              <td class="ps-2">${k.aktywnosc}</td>
+              <td class="text-end fw-semibold pe-2" style="width:60px">${fmt}</td>
+            </tr>`;
+          });
+          html += `</tbody></table></div>`;
+        }
+        bodyEl.innerHTML = html;
       })
-      .forEach(k => grid.appendChild(k));
-  }
+      .catch(() => {
+        bodyEl.innerHTML = '<div class="alert alert-danger">Błąd ładowania danych.</div>';
+      });
+  });
+})();
 
-  szukaj.addEventListener('input',  aktualizuj);
-  sortuj.addEventListener('change', aktualizuj);
+// ── Wyszukiwanie serwerowe (debounce) + sortowanie na stronie ─────────────────
+(function () {
+  'use strict';
+  const form           = document.getElementById('formFiltr');
+  const szukaj         = document.getElementById('szukaj');
+  const filtrDzial     = document.getElementById('filtrDzial');
+  const filtrNieobecni = document.getElementById('filtrNieobecni');
+  const sortuj         = document.getElementById('sortuj');
+  const tbody          = document.querySelector('#tablePracownicy tbody');
+
+  // Debounce: submit form 400ms after user stops typing
+  let timer;
+  szukaj.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => form.submit(), 400);
+  });
+  filtrDzial.addEventListener('change', () => form.submit());
+  if (filtrNieobecni) filtrNieobecni.addEventListener('change', () => form.submit());
+
+  // Sortowanie w obrębie bieżącej strony
+  if (sortuj && tbody) {
+    sortuj.addEventListener('change', () => {
+      const sort = sortuj.value;
+      const rows = Array.from(document.querySelectorAll('.karta-pracownika'));
+      rows.sort((a, b) => sort === 'za'
+        ? b.dataset.sortname.localeCompare(a.dataset.sortname, 'pl')
+        : a.dataset.sortname.localeCompare(b.dataset.sortname, 'pl'))
+        .forEach(r => tbody.appendChild(r));
+    });
+  }
 })();
 </script>
 {% endblock %}

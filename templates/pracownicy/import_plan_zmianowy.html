@@ -1,0 +1,294 @@
+{% extends 'base.html' %}
+{% block title %}Import planu zmianowego{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-4">
+  <i class="bi bi-calendar-week-fill fs-3 text-primary"></i>
+  <div class="flex-grow-1">
+    <h4 class="mb-0">Import planu zmianowego</h4>
+    <small class="text-muted">Plik Plan_dzienny_NEW.xlsx — arkusz „PLAN NEW" z 3 zmianami</small>
+  </div>
+  {% if plany_count %}
+  <a href="{% url 'pracownicy:plany_lista' %}" class="btn btn-outline-primary btn-sm">
+    <i class="bi bi-calendar3 me-1"></i>Plany w bazie ({{ plany_count }})
+  </a>
+  {% endif %}
+</div>
+
+{% if messages %}
+  {% for msg in messages %}
+  <div class="alert alert-{{ msg.tags }} alert-dismissible fade show" role="alert">
+    {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% endfor %}
+{% endif %}
+
+{% if not tmp_uuid %}
+<!-- ═══ KROK 1: Upload ═══ -->
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+
+    <!-- Konfiguracja przypisania liter zmian -->
+    <div class="card shadow-sm mb-3">
+      <div class="card-header fw-semibold">
+        <i class="bi bi-sliders me-2 text-secondary"></i>Przypisanie liter zmian do zmian dnia
+      </div>
+      <div class="card-body">
+        <p class="small text-muted mb-3">
+          Określ, która litera zmiany (A/B/C) odpowiada której zmianie dnia (I/II/III).
+          Każda litera może być użyta tylko raz.
+        </p>
+        <form method="post" id="configForm">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="save_config">
+          <div class="row g-3 align-items-end">
+            <div class="col-sm-4">
+              <label class="form-label small mb-1 fw-semibold">
+                <i class="bi bi-sunrise me-1 text-warning"></i>Zmiana I
+              </label>
+              <select name="zmiana_1" id="sel_1" class="form-select zmiana-sel">
+                <option value="">—</option>
+                <option value="A">A</option>
+                <option value="B">B</option>
+                <option value="C">C</option>
+              </select>
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label small mb-1 fw-semibold">
+                <i class="bi bi-sun me-1 text-warning"></i>Zmiana II
+              </label>
+              <select name="zmiana_2" id="sel_2" class="form-select zmiana-sel">
+                <option value="">—</option>
+                <option value="A">A</option>
+                <option value="B">B</option>
+                <option value="C">C</option>
+              </select>
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label small mb-1 fw-semibold">
+                <i class="bi bi-moon-stars me-1 text-secondary"></i>Zmiana III
+              </label>
+              <select name="zmiana_3" id="sel_3" class="form-select zmiana-sel">
+                <option value="">—</option>
+                <option value="A">A</option>
+                <option value="B">B</option>
+                <option value="C">C</option>
+              </select>
+            </div>
+          </div>
+          <div class="mt-3 d-flex align-items-center gap-3">
+            <button type="submit" class="btn btn-sm btn-outline-secondary" id="saveConfigBtn">
+              <i class="bi bi-save me-1"></i>Zapisz konfigurację
+            </button>
+            <span class="text-muted small" id="configError" style="display:none;color:var(--bs-danger)">
+              <i class="bi bi-exclamation-circle me-1"></i>Każda litera musi być użyta dokładnie raz.
+            </span>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card shadow-sm">
+      <div class="card-header fw-semibold">
+        <i class="bi bi-upload me-2 text-primary"></i>Wybierz plik planu
+      </div>
+      <div class="card-body">
+        <form method="post" enctype="multipart/form-data" id="uploadForm">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="upload">
+          <div class="mb-3">
+            <label class="form-label">Data planu</label>
+            <input type="date" name="data_planu" id="dataPlanu" class="form-control"
+                   value="{{ data_planu }}" required>
+            <div class="form-text">Dzień, na który dotyczy ten plan zapotrzebowania.</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Plik planu (.xlsx)</label>
+            <input type="file" name="plik" class="form-control" accept=".xlsx" required>
+            <div class="form-text">
+              Oczekiwany format: jeden arkusz <strong>„PLAN NEW"</strong> zawierający
+              3 zmiany (I, II, III) w jednym wierszu per aktywność (24 punkty godzinowe).
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary" id="submitBtn">
+            <span class="spinner-border spinner-border-sm me-1" id="spinner" style="display:none"></span>
+            <i class="bi bi-search me-1" id="searchIcon"></i>Parsuj i podejrzyj
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card mt-3 border-0 bg-light">
+      <div class="card-body small text-muted">
+        <strong>Schemat kolumn:</strong><br>
+        Zmiana I — kolumny L–S (godziny 6–13) &nbsp;|&nbsp;
+        Zmiana II — kolumny W–AD (godziny 14–21) &nbsp;|&nbsp;
+        Zmiana III — kolumny AH–AO (godziny 22–5)<br>
+        Sekcje działów wykrywane przez kolumnę B = <em>Bufor</em>.
+      </div>
+    </div>
+  </div>
+</div>
+
+{% else %}
+<!-- ═══ KROK 2: Podgląd i potwierdzenie ═══ -->
+<div class="row g-3 mb-3">
+  <div class="col-sm-6 col-lg-3">
+    <div class="card text-center border-primary">
+      <div class="card-body py-2">
+        <div class="fs-4 fw-bold text-primary">{{ stats.total_aktywnosci }}</div>
+        <div class="small text-muted">aktywności</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card text-center border-secondary">
+      <div class="card-body py-2">
+        <div class="fs-4 fw-bold">{{ stats.total_rekordow }}</div>
+        <div class="small text-muted">rekordów godzinowych</div>
+      </div>
+    </div>
+  </div>
+  {% for dzial, ile in stats.dzialy.items %}
+  <div class="col-sm-6 col-lg-3">
+    <div class="card text-center">
+      <div class="card-body py-2">
+        <div class="fs-5 fw-bold">{{ ile }}</div>
+        <div class="small text-muted">{{ dzial }}</div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% if ostrzezenia %}
+<div class="alert alert-warning">
+  <strong><i class="bi bi-exclamation-triangle-fill me-1"></i>Ostrzeżenia ({{ ostrzezenia|length }}):</strong>
+  <ul class="mb-0 mt-1">
+    {% for o in ostrzezenia %}<li>{{ o }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<div class="card shadow-sm mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold">
+      <i class="bi bi-table me-1 text-primary"></i>Podgląd — pierwsze {{ podglad|length }} aktywności
+      {% if stats.total_aktywnosci > podglad|length %}
+        <span class="badge bg-secondary">z {{ stats.total_aktywnosci }}</span>
+      {% endif %}
+    </span>
+    <div class="d-flex gap-3 align-items-center">
+      {% if data_planu %}
+      <span class="badge bg-primary fs-6">
+        <i class="bi bi-calendar3 me-1"></i>{{ data_planu }}
+      </span>
+      {% endif %}
+      <small class="text-muted">{{ nazwa_pliku }}</small>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Dział</th>
+          <th>Aktywność</th>
+          <th class="text-end">Wol. I</th>
+          <th class="text-end">Max os. I</th>
+          <th class="text-end">Wol. II</th>
+          <th class="text-end">Max os. II</th>
+          <th class="text-end">Wol. III</th>
+          <th class="text-end">Max os. III</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for w in podglad %}
+        <tr>
+          <td><span class="badge bg-secondary">{{ w.dzial }}</span></td>
+          <td>{{ w.aktywnosc }}</td>
+          <td class="text-end">{{ w.wolumen_I|floatformat:0 }}</td>
+          <td class="text-end fw-semibold text-primary">
+            {{ w.godziny.1.values|dictsort:0|last|floatformat:1 }}
+          </td>
+          <td class="text-end">{{ w.wolumen_II|floatformat:0 }}</td>
+          <td class="text-end fw-semibold" style="color:#fd7e14">
+            {{ w.godziny.2.values|dictsort:0|last|floatformat:1 }}
+          </td>
+          <td class="text-end">{{ w.wolumen_III|floatformat:0 }}</td>
+          <td class="text-end fw-semibold text-info">
+            {{ w.godziny.3.values|dictsort:0|last|floatformat:1 }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="d-flex gap-2">
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="confirm">
+    <input type="hidden" name="tmp_uuid" value="{{ tmp_uuid }}">
+    <input type="hidden" name="data_planu" value="{{ data_planu }}">
+    <button type="submit" class="btn btn-success">
+      <i class="bi bi-check-lg me-1"></i>Zatwierdź i zapisz do bazy
+    </button>
+  </form>
+  <a href="{% url 'import_danych:import_plan_zmianowy' %}" class="btn btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Wróć (anuluj)
+  </a>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('uploadForm')?.addEventListener('submit', function () {
+  document.getElementById('spinner').style.display = 'inline-block';
+  document.getElementById('searchIcon').style.display = 'none';
+  document.getElementById('submitBtn').disabled = true;
+});
+
+// Mutual exclusion: grey out already-chosen letters in sibling selects
+(function () {
+  const sels = [
+    document.getElementById('sel_1'),
+    document.getElementById('sel_2'),
+    document.getElementById('sel_3'),
+  ].filter(Boolean);
+
+  if (!sels.length) return;
+
+  function syncDisabled() {
+    const chosen = sels.map(s => s.value);
+    sels.forEach((sel, i) => {
+      Array.from(sel.options).forEach(opt => {
+        const usedElsewhere = opt.value !== '' && chosen.some((v, j) => j !== i && v === opt.value);
+        opt.disabled = usedElsewhere;
+      });
+    });
+  }
+
+  function validateConfig() {
+    const vals = sels.map(s => s.value);
+    const allFilled = vals.every(v => v !== '');
+    const unique = allFilled && new Set(vals).size === 3;
+    const errEl = document.getElementById('configError');
+    const btn = document.getElementById('saveConfigBtn');
+    if (errEl) errEl.style.display = (allFilled && !unique) ? 'inline' : 'none';
+    if (btn) btn.disabled = !unique;
+  }
+
+  sels.forEach(sel => {
+    sel.addEventListener('change', () => {
+      syncDisabled();
+      validateConfig();
+    });
+  });
+
+  syncDisabled();
+  validateConfig();
+})();
+</script>
+{% endblock %}

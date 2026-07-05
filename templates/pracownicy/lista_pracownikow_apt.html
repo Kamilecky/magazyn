@@ -1,0 +1,109 @@
+{% extends 'base.html' %}
+{% block title %}Pracownicy APT{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-person-badge-fill text-warning"></i> Pracownicy APT</h4>
+  <a href="{% url 'import_danych:import_pracownicy_apt' %}" class="btn btn-warning btn-sm">
+    <i class="bi bi-upload me-1"></i>Import APT
+  </a>
+</div>
+
+{% if pracownicy_apt %}
+<div class="table-responsive">
+  <table class="table table-hover align-middle">
+    <thead class="table-dark">
+      <tr>
+        <th style="width:36px"></th>
+        <th>Nazwisko i imię</th>
+        <th>Agencja</th>
+        <th>Płeć</th>
+        <th>Grupa</th>
+        <th class="text-end">Ocen</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in pracownicy_apt %}
+      <tr>
+        <td>
+          <div class="rounded-circle bg-warning text-dark d-flex align-items-center justify-content-center fw-bold"
+               style="width:32px;height:32px;font-size:.8rem;flex-shrink:0">
+            {{ p.nazwisko|first|upper }}{{ p.imie|first|upper }}
+          </div>
+        </td>
+        <td>
+          <span class="fw-semibold">{{ p.nazwisko }}</span> {{ p.imie }}
+        </td>
+        <td>
+          {% if p.nazwa_agencji %}
+          <span class="badge bg-warning text-dark">{{ p.nazwa_agencji }}</span>
+          {% else %}<span class="text-muted">—</span>{% endif %}
+        </td>
+        <td>{{ p.plec|default:"—" }}</td>
+        <td>{{ p.grupa|default:"—" }}</td>
+        <td class="text-end">
+          {% if p.liczba_ocen %}
+          <span class="badge bg-secondary">{{ p.liczba_ocen }}</span>
+          {% else %}
+          <span class="text-muted">0</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if pracownicy_apt.paginator.num_pages > 1 %}
+<div class="d-flex justify-content-between align-items-center mt-3 px-1">
+  <div class="text-muted small">
+    Strona {{ pracownicy_apt.number }} z {{ pracownicy_apt.paginator.num_pages }}
+    &nbsp;·&nbsp; łącznie {{ pracownicy_apt.paginator.count }} pracowników APT
+  </div>
+  <ul class="pagination pagination-sm mb-0">
+    {% if pracownicy_apt.has_previous %}
+    <li class="page-item">
+      <a class="page-link" href="?page={{ pracownicy_apt.previous_page_number }}"><i class="bi bi-chevron-left"></i></a>
+    </li>
+    {% else %}
+    <li class="page-item disabled"><span class="page-link"><i class="bi bi-chevron-left"></i></span></li>
+    {% endif %}
+
+    {% if pr_start > 1 %}
+    <li class="page-item"><a class="page-link" href="?page=1">1</a></li>
+    {% if pr_start > 2 %}<li class="page-item disabled"><span class="page-link">…</span></li>{% endif %}
+    {% endif %}
+
+    {% for num in page_range %}
+    <li class="page-item {% if num == pracownicy_apt.number %}active{% endif %}">
+      <a class="page-link" href="?page={{ num }}">{{ num }}</a>
+    </li>
+    {% endfor %}
+
+    {% with last_page=pracownicy_apt.paginator.num_pages %}
+    {% if pr_end < last_page %}
+    {% with last_minus_1=last_page|add:"-1" %}
+    {% if pr_end < last_minus_1 %}<li class="page-item disabled"><span class="page-link">…</span></li>{% endif %}
+    {% endwith %}
+    <li class="page-item"><a class="page-link" href="?page={{ last_page }}">{{ last_page }}</a></li>
+    {% endif %}
+    {% endwith %}
+
+    {% if pracownicy_apt.has_next %}
+    <li class="page-item">
+      <a class="page-link" href="?page={{ pracownicy_apt.next_page_number }}"><i class="bi bi-chevron-right"></i></a>
+    </li>
+    {% else %}
+    <li class="page-item disabled"><span class="page-link"><i class="bi bi-chevron-right"></i></span></li>
+    {% endif %}
+  </ul>
+</div>
+{% endif %}
+
+{% else %}
+<div class="alert alert-secondary">
+  Brak pracowników APT w bazie danych.
+  <a href="{% url 'import_danych:import_pracownicy_apt' %}">Zaimportuj plik APT.</a>
+</div>
+{% endif %}
+{% endblock %}
