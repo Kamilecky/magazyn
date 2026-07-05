@@ -321,23 +321,17 @@
     try { komp = JSON.parse(el.dataset.komp || '[]'); } catch { komp = []; }
     if (!komp.length) return;
 
-    const grouped = {};
-    komp.forEach(k => {
-      const d = k.d || '—';
-      if (!grouped[d]) grouped[d] = [];
-      grouped[d].push(k);
+    const top = komp.slice(0, 4);
+    let html = '<div style="min-width:210px;font-size:.8rem">';
+    top.forEach(k => {
+      const v = Number.isInteger(k.v) ? k.v : k.v.toFixed(1);
+      html += `<div class="d-flex justify-content-between gap-3">
+        <span class="text-truncate">${k.n}</span>
+        <span class="fw-bold text-primary ms-2">${v}</span>
+      </div>`;
     });
-
-    let html = '<div style="max-height:260px;overflow-y:auto;min-width:210px;font-size:.8rem">';
-    for (const [dzial, items] of Object.entries(grouped)) {
-      html += `<div class="text-uppercase fw-semibold text-secondary mb-1 mt-1" style="font-size:.68rem;letter-spacing:.04em">${dzial}</div>`;
-      items.forEach(k => {
-        const v = Number.isInteger(k.v) ? k.v : k.v.toFixed(1);
-        html += `<div class="d-flex justify-content-between gap-3">
-          <span class="text-truncate">${k.n}</span>
-          <span class="fw-bold text-primary ms-2">${v}</span>
-        </div>`;
-      });
+    if (komp.length > 4) {
+      html += `<div class="text-muted mt-1" style="font-size:.72rem">+ ${komp.length - 4} więcej</div>`;
     }
     html += '</div>';
 
@@ -346,7 +340,7 @@
       trigger: 'hover',
       placement: 'right',
       container: 'body',
-      title: `Kompetencje (${komp.length})`,
+      title: 'Top kompetencje',
       content: html,
     });
   });
