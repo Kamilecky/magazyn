@@ -64,6 +64,16 @@ def lista(request):
     arkusz_q  = request.GET.get('arkusz', '').strip()
     nieobecni = request.GET.get('nieobecni', '') == '1'
 
+    f_nr         = request.GET.get('f_nr', '').strip()
+    f_nazwisko   = request.GET.get('f_nazwisko', '').strip()
+    f_imie       = request.GET.get('f_imie', '').strip()
+    f_stanowisko = request.GET.get('f_stanowisko', '').strip()
+    f_strefa     = request.GET.get('f_strefa', '').strip()
+    f_dzial      = request.GET.get('f_dzial', '').strip()
+    f_zmiana     = request.GET.get('f_zmiana', '').strip()
+    f_zmiana_gr  = request.GET.get('f_zmiana_gr', '').strip()
+    f_przelozony = request.GET.get('f_przelozony', '').strip()
+
     qs = (Pracownik.objects
           .annotate(
               liczba_kompetencji=Count('kompetencje', distinct=True),
@@ -94,6 +104,16 @@ def lista(request):
     if nieobecni:
         qs = qs.filter(liczba_absencji__gt=0)
 
+    if f_nr:         qs = qs.filter(nr_ewidencyjny__icontains=f_nr)
+    if f_nazwisko:   qs = qs.filter(nazwisko__icontains=f_nazwisko)
+    if f_imie:       qs = qs.filter(imie__icontains=f_imie)
+    if f_stanowisko: qs = qs.filter(stanowisko__icontains=f_stanowisko)
+    if f_strefa:     qs = qs.filter(strefa__icontains=f_strefa)
+    if f_dzial:      qs = qs.filter(dzial__icontains=f_dzial)
+    if f_zmiana:     qs = qs.filter(zmiana__icontains=f_zmiana)
+    if f_zmiana_gr:  qs = qs.filter(zmiana_grupa__icontains=f_zmiana_gr)
+    if f_przelozony: qs = qs.filter(przelozony__icontains=f_przelozony)
+
     # Zakładki arkuszy z liczbą pracowników
     base_qs = Pracownik.objects
     if q:
@@ -119,7 +139,15 @@ def lista(request):
             arkusze_tabs.append({'value': ark, 'skrot': ark or 'Inne', 'count': cnt})
 
     from urllib.parse import urlencode
-    _fp = {k: v for k, v in [('q', q), ('arkusz', arkusz_q), ('nieobecni', '1' if nieobecni else '')] if v}
+    col_filters = {
+        'f_nr': f_nr, 'f_nazwisko': f_nazwisko, 'f_imie': f_imie,
+        'f_stanowisko': f_stanowisko, 'f_strefa': f_strefa, 'f_dzial': f_dzial,
+        'f_zmiana': f_zmiana, 'f_zmiana_gr': f_zmiana_gr, 'f_przelozony': f_przelozony,
+    }
+    _fp = {k: v for k, v in [
+        ('q', q), ('arkusz', arkusz_q), ('nieobecni', '1' if nieobecni else ''),
+        *col_filters.items(),
+    ] if v}
     filter_params = urlencode(_fp)
 
     paginator = Paginator(qs, 50)
@@ -135,6 +163,8 @@ def lista(request):
         'page_range': pr,
         'pr_start': pr_start,
         'pr_end': pr_end,
+        **col_filters,
+        'has_col_filters': any(col_filters.values()),
     })
 
 
@@ -814,8 +844,9 @@ def import_pracownicy(request):
             p_list, k_dict, ostr = parsuj_kompetencje(plik_kompetencje)
             for p in p_list:
                 key = (p['nazwisko'], p['imie'])
-                p_bez_dzialu = {k: v for k, v in p.items() if k != 'dzial'}
-                pracownicy_dict[key] = {**pracownicy_dict.get(key, {}), **p_bez_dzialu}
+                _tylko_struktura = {'dzial', 'zmiana', 'zmiana_grupa'}
+                p_komp = {k: v for k, v in p.items() if k not in _tylko_struktura}
+                pracownicy_dict[key] = {**pracownicy_dict.get(key, {}), **p_komp}
             for key, komp in k_dict.items():
                 kompetencje_dict.setdefault(key, []).extend(komp)
             ostrzezenia.extend(ostr)

@@ -60,7 +60,7 @@
       </div>
       <div class="col-md-4 text-end">
         <span class="text-muted small fw-bold">{{ pracownicy.paginator.count }} pracowników</span>
-        {% if q or arkusz_q or nieobecni %}
+        {% if q or arkusz_q or nieobecni or has_col_filters %}
         <a href="{% url 'pracownicy:lista' %}" class="btn btn-outline-secondary btn-sm ms-2 py-0 px-2">
           <i class="bi bi-x"></i> Wyczyść filtr
         </a>
@@ -89,6 +89,21 @@
         <th>Absencje</th>
         <th class="text-end">Komp.</th>
         <th style="width:36px"></th>
+      </tr>
+      <tr class="col-filter-row">
+        <th><input class="col-filter" name="f_nr"         value="{{ f_nr }}"         placeholder="…" autocomplete="off"></th>
+        <th><input class="col-filter" name="f_nazwisko"   value="{{ f_nazwisko }}"   placeholder="…" autocomplete="off"></th>
+        <th><input class="col-filter" name="f_imie"       value="{{ f_imie }}"       placeholder="…" autocomplete="off"></th>
+        <th></th>
+        <th><input class="col-filter" name="f_stanowisko" value="{{ f_stanowisko }}" placeholder="…" autocomplete="off"></th>
+        <th><input class="col-filter" name="f_strefa"     value="{{ f_strefa }}"     placeholder="…" autocomplete="off"></th>
+        <th><input class="col-filter" name="f_dzial"      value="{{ f_dzial }}"      placeholder="…" autocomplete="off"></th>
+        <th><input class="col-filter" name="f_zmiana"     value="{{ f_zmiana }}"     placeholder="…" autocomplete="off" style="width:44px"></th>
+        <th><input class="col-filter" name="f_zmiana_gr"  value="{{ f_zmiana_gr }}"  placeholder="…" autocomplete="off" style="width:44px"></th>
+        <th><input class="col-filter" name="f_przelozony" value="{{ f_przelozony }}" placeholder="…" autocomplete="off"></th>
+        <th></th>
+        <th></th>
+        <th></th>
       </tr>
     </thead>
     <tbody>
@@ -261,6 +276,30 @@
 </div>
 {% endblock %}
 
+{% block extra_css %}
+<style>
+.col-filter-row th { padding: 3px 4px; background: #f8f9fa; }
+.col-filter {
+  width: 100%; min-width: 0;
+  padding: 2px 5px;
+  font-size: .73rem;
+  border: 1px solid #ced4da;
+  border-radius: 3px;
+  background: #fff;
+  color: #212529;
+  outline: none;
+  transition: border-color .15s, background .15s;
+}
+.col-filter:focus { border-color: #86b7fe; box-shadow: 0 0 0 2px rgba(13,110,253,.15); }
+.col-filter.cf-active { background: #fff3cd; border-color: #ffc107; }
+@media (prefers-color-scheme: dark) {
+  .col-filter { background: #2b3035; border-color: #495057; color: #dee2e6; }
+  .col-filter.cf-active { background: #3d3000; border-color: #ffc107; }
+  .col-filter-row th { background: #212529; }
+}
+</style>
+{% endblock %}
+
 {% block extra_js %}
 <script>
 (function () {
@@ -346,17 +385,46 @@
   });
 })();
 
-// Debounce wyszukiwania
+// Filtry — nawigacja z zachowaniem wszystkich parametrów
 (function () {
-  const form    = document.getElementById('formFiltr');
-  const szukaj  = document.getElementById('szukaj');
-  const nieobecni = document.getElementById('filtrNieobecni');
-  let timer;
-  szukaj?.addEventListener('input', () => {
-    clearTimeout(timer);
-    timer = setTimeout(() => form.submit(), 400);
+  function buildParams() {
+    const p = new URLSearchParams();
+    const q = document.getElementById('szukaj')?.value.trim();
+    if (q) p.set('q', q);
+    const ark = document.querySelector('#formFiltr [name="arkusz"]')?.value.trim();
+    if (ark) p.set('arkusz', ark);
+    if (document.getElementById('filtrNieobecni')?.checked) p.set('nieobecni', '1');
+    document.querySelectorAll('.col-filter').forEach(inp => {
+      const v = inp.value.trim();
+      if (v) p.set(inp.name, v);
+    });
+    return p;
+  }
+
+  window.navigateWithFilters = function () {
+    window.location.href = '?' + buildParams().toString();
+  };
+
+  // Zaznacz aktywne filtry kolumnowe
+  document.querySelectorAll('.col-filter').forEach(inp => {
+    if (inp.value.trim()) inp.classList.add('cf-active');
+    inp.addEventListener('input', function () {
+      this.classList.toggle('cf-active', this.value.trim() !== '');
+    });
   });
-  nieobecni?.addEventListener('change', () => form.submit());
+
+  let timer;
+  function debounced() {
+    clearTimeout(timer);
+    timer = setTimeout(window.navigateWithFilters, 360);
+  }
+
+  document.getElementById('szukaj')?.addEventListener('input', debounced);
+  document.getElementById('filtrNieobecni')?.addEventListener('change', window.navigateWithFilters);
+  document.querySelectorAll('.col-filter').forEach(inp => inp.addEventListener('input', debounced));
+
+  const form = document.getElementById('formFiltr');
+  form?.addEventListener('submit', e => { e.preventDefault(); window.navigateWithFilters(); });
 })();
 </script>
 {% endblock %}
