@@ -13,4 +13,5 @@ urlpatterns = [
     path('<int:pk>/kompetencje/', views.kompetencje_pracownika, name='kompetencje_pracownika'),
     path('plany/<int:pk>/przydziel/', views.przydziel_plan, name='przydziel_plan'),
     path('plany/<int:pk>/wyniki/', views.wyniki_przydzialu, name='wyniki_przydzialu'),
+    path('macierz-procesowa/', views.macierz_procesowa, name='macierz_procesowa'),
 ]

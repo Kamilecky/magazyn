@@ -90,9 +90,11 @@
     <div class="mb-4">
       <div class="d-flex align-items-center mb-2 gap-2">
         {% with dept=dzial_dept|get_item:dzial_nazwa %}
-        <span class="badge bg-secondary">
+        <button type="button" class="badge bg-secondary border-0 dzial-modal-trigger"
+                data-dzial-nazwa="{{ dzial_nazwa }}" style="cursor:pointer;text-decoration:none">
           {% if dept %}<span class="opacity-75 me-1">{{ dept }} ·</span>{% endif %}{{ dzial_nazwa }}
-        </span>
+          <i class="bi bi-info-circle ms-1" style="font-size:.7rem"></i>
+        </button>
         {% endwith %}
         <span class="text-muted small">{{ aktywnosci|length }} aktywności</span>
       </div>
@@ -111,8 +113,8 @@
         <div class="px-3 py-2">
           <div class="d-flex flex-wrap gap-1">
             {% for prac in akt.pracownicy %}
-            <span class="badge bg-light text-secondary border border-secondary-subtle fw-normal"
-                  style="font-size:.78rem"
+            <span class="badge fw-normal {% if prac.apt %}border border-warning text-dark{% else %}bg-light text-secondary border border-secondary-subtle{% endif %}"
+                  style="font-size:.78rem{% if prac.apt %};background-color:#fefce8{% endif %}"
                   title="{{ prac.imie }} {{ prac.nazwisko }}{% if prac.apt %} · APT{% endif %}"
                   data-bs-toggle="tooltip">
               {{ prac.imie|first }}. {{ prac.nazwisko }}{% if prac.apt %} (APT){% endif %}
@@ -135,7 +137,10 @@
             <span class="badge bg-secondary fw-normal" style="font-size:.72rem">{{ dept }}</span>
             {% endif %}
             {% endwith %}
-            {{ akt.nazwa }}
+            <button type="button" class="btn btn-link p-0 fw-semibold text-body text-start lh-sm akt-modal-trigger"
+                    data-akt-nazwa="{{ akt.nazwa }}" style="font-size:inherit;text-decoration:none">
+              {{ akt.nazwa }}<i class="bi bi-box-arrow-up-right ms-1 text-muted" style="font-size:.65rem"></i>
+            </button>
             {% if not akt.kompletny %}
             <i class="bi bi-exclamation-triangle-fill text-warning ms-1"
                title="Niedobór: przydzielono {{ akt.przydzielono }}, plan wymaga {{ akt.wymagana }}"
@@ -193,11 +198,11 @@
           <div class="d-flex flex-wrap gap-1">
             {% for prac in akt.pracownicy %}
             <div class="d-inline-flex align-items-center gap-1 border rounded px-2 py-1
-                        {% if prac.apt %}border-warning bg-warning-subtle
-                        {% else %}border-primary{% endif %}"
-                 style="font-size:.8rem;cursor:default"
-                 title="{{ prac.imie }} {{ prac.nazwisko }}{% if prac.zmiana_grupa %} · {{ prac.zmiana_grupa }}{% endif %}{% if prac.nieobecny %} · N{% endif %}{% if prac.apt %} · APT{% endif %}"
-                 data-bs-toggle="tooltip" data-bs-placement="top">
+                        {% if prac.apt %}border-warning text-dark
+                        {% else %}border-primary{% endif %} prac-modal-trigger"
+                 style="font-size:.8rem;cursor:pointer{% if prac.apt %};background-color:#fefce8{% endif %}"
+                 data-prac-pk="{{ prac.pk }}"
+                 title="{{ prac.imie }} {{ prac.nazwisko }}{% if prac.zmiana_grupa %} · {{ prac.zmiana_grupa }}{% endif %}{% if prac.nieobecny %} · N{% endif %}{% if prac.apt %} · APT{% endif %}">
               <span>{{ prac.imie|first }}. {{ prac.nazwisko }}</span>
               {% if prac.zmiana_grupa %}
               {% with zg=prac.zmiana_grupa %}
@@ -208,6 +213,9 @@
                 {% else %}bg-secondary{% endif %}"
                     style="font-size:.68rem">{{ zg }}</span>
               {% endwith %}
+              {% endif %}
+              {% if prac.wynik %}
+              <span class="badge bg-success ms-1" style="font-size:.68rem" title="Ocena w grupie procesowej">{{ prac.wynik }}</span>
               {% endif %}
               {% if prac.apt %}
               <span class="badge bg-warning text-dark ms-1" style="font-size:.7rem">APT</span>
@@ -233,12 +241,170 @@
 <div class="alert alert-info">Brak danych przydziału dla tego planu.</div>
 {% endif %}
 
+<!-- Modal aktywności / działu / pracownika -->
+<div class="modal fade" id="aktModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <div>
+          <h6 class="modal-title mb-0" id="aktModalTitle"></h6>
+          <div class="text-muted small" id="aktModalSubtitle"></div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-3" id="aktModalBody"></div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
 <script>
 document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
   new bootstrap.Tooltip(el);
+});
+
+const MODAL_DATA  = {{ modal_data_json|safe }};
+const WORKER_DATA = {{ worker_data_json|safe }};
+const DZIAL_DATA  = {{ dzial_data_json|safe }};
+const aktModal    = new bootstrap.Modal(document.getElementById('aktModal'));
+
+/* helpers */
+function _zgCls(zg) {
+  if (!zg) return 'bg-secondary';
+  const l = zg[0].toUpperCase();
+  return l==='A'?'bg-success':l==='B'?'bg-primary':l==='C'?'bg-danger':'bg-secondary';
+}
+function _sec(icon, label, body) {
+  return `<div class="mb-3">
+    <div class="text-uppercase fw-semibold text-muted mb-2" style="font-size:.68rem;letter-spacing:.05em">
+      <i class="bi bi-${icon} me-1"></i>${label}
+    </div>${body}</div>`;
+}
+function _czHtml(czynnosci) {
+  if (!czynnosci || !czynnosci.length) return '<span class="text-muted small fst-italic">Brak danych</span>';
+  return '<div class="d-flex flex-wrap gap-1">'
+    + czynnosci.map(c =>
+        `<span class="badge rounded-pill fw-normal ${c.w_db?'text-bg-success':'text-bg-danger'}" style="font-size:.73rem">${c.w_db?'✓':'✗'} ${c.nazwa}</span>`
+      ).join('')
+    + '</div>';
+}
+function _kompHtml(top_komp) {
+  if (!top_komp || !top_komp.length) return '<span class="text-muted small fst-italic">Brak kompetencji</span>';
+  return '<div class="d-flex flex-wrap gap-1">'
+    + top_komp.map(k =>
+        `<span class="badge bg-light text-dark border" style="font-size:.71rem">${k.nazwa} <strong class="text-primary">${k.wynik}</strong></span>`
+      ).join('')
+    + '</div>';
+}
+function _rankHtml(group_rankings) {
+  if (!group_rankings || !group_rankings.length)
+    return '<span class="text-muted small fst-italic">Brak w rankingu grup procesowych</span>';
+  return '<div class="d-flex flex-column gap-1">'
+    + group_rankings.map(r =>
+        `<div class="d-flex align-items-center gap-2 border rounded px-2 py-1" style="font-size:.8rem">
+           <span class="badge bg-secondary fw-normal" style="font-size:.65rem">#${r.nr}</span>
+           <span class="flex-grow-1">${r.nazwa}</span>
+           <span class="text-muted small">miejsce <strong>${r.rank}</strong></span>
+           <span class="badge bg-success">${r.score}</span>
+         </div>`
+      ).join('')
+    + '</div>';
+}
+function _showModal(title, subtitle, bodyHTML) {
+  document.getElementById('aktModalTitle').textContent = title;
+  document.getElementById('aktModalSubtitle').textContent = subtitle || '';
+  document.getElementById('aktModalBody').innerHTML = bodyHTML;
+  aktModal.show();
+}
+
+/* Klik w nazwę aktywności */
+document.querySelectorAll('.akt-modal-trigger').forEach(btn => {
+  btn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    const nazwa  = this.dataset.aktNazwa;
+    const d      = MODAL_DATA[nazwa] || {};
+    const groups = d.groups || [];
+    const workers = d.workers || [];
+
+    let czBody = '';
+    if (groups.length) {
+      czBody = groups.map(g =>
+        `<div class="mb-2">
+          <div class="fw-semibold text-muted mb-1" style="font-size:.78rem">#${g.nr} ${g.nazwa}</div>
+          ${_czHtml(g.czynnosci)}
+        </div>`
+      ).join('<hr class="my-2">');
+    } else {
+      czBody = '<span class="text-muted small fst-italic">Aktywność nie należy do żadnej grupy procesowej.</span>';
+    }
+    let body = _sec('diagram-3 text-info', 'Czynności w grupach procesowych (macierz)', czBody);
+
+    if (workers.length) {
+      body += _sec('trophy text-success', 'Przydzieleni pracownicy z oceną procesową',
+        workers.map((w, i) => {
+          const zg = w.zmiana_grupa ? `<span class="badge ${_zgCls(w.zmiana_grupa)} ms-1" style="font-size:.65rem">${w.zmiana_grupa}</span>` : '';
+          return `<div class="border rounded p-2 mb-1">
+            <div class="d-flex align-items-center flex-wrap gap-1">
+              <span class="fw-semibold text-muted me-1">${i+1}.</span>
+              <span class="fw-semibold">${w.imie[0]}. ${w.nazwisko}</span>${zg}
+              <span class="badge bg-success ms-1" style="font-size:.68rem">${w.wynik}</span>
+            </div>
+            <div class="mt-1">${_kompHtml(w.top_komp)}</div>
+          </div>`;
+        }).join('')
+      );
+    } else {
+      body += _sec('trophy text-success', 'Przydzieleni pracownicy z oceną procesową',
+        '<span class="text-muted small fst-italic">Brak pracowników z oceną.</span>');
+    }
+    const subtitle = groups.length
+      ? groups.map(g => `Grupa #${g.nr}`).join(', ')
+      : '';
+    _showModal(nazwa, subtitle, body);
+  });
+});
+
+/* Klik w odznakę działu */
+document.querySelectorAll('.dzial-modal-trigger').forEach(btn => {
+  btn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    const nazwa = this.dataset.dzialNazwa;
+    const d     = DZIAL_DATA[nazwa] || {};
+    const groups = d.groups || [];
+
+    let body = '';
+    if (groups.length) {
+      body = groups.map(g =>
+        _sec('diagram-3 text-info',
+          `Grupa #${g.nr}: ${g.nazwa}`,
+          _czHtml(g.czynnosci))
+      ).join('<hr class="my-2">');
+    } else {
+      body = '<span class="text-muted small fst-italic">Brak dopasowanych grup procesowych dla tego działu.</span>';
+    }
+    _showModal(nazwa, `${groups.length} grup procesowych`, body);
+  });
+});
+
+/* Klik w odznakę pracownika */
+document.querySelectorAll('.prac-modal-trigger').forEach(el => {
+  el.addEventListener('click', function(e) {
+    e.stopPropagation();
+    const pk = this.dataset.pracPk;
+    const w  = WORKER_DATA[pk];
+    if (!w) return;
+
+    const zg = w.zmiana_grupa ? `<span class="badge ${_zgCls(w.zmiana_grupa)}" style="font-size:.7rem">${w.zmiana_grupa}</span>` : '';
+    const sc = w.wynik ? `<span class="badge bg-success ms-1" style="font-size:.7rem">${w.wynik}</span>` : '';
+
+    const body = `<div class="d-flex align-items-center gap-1 mb-3">${zg}${sc}</div>`
+      + _sec('star text-warning', 'Top kompetencje', _kompHtml(w.top_komp))
+      + _sec('trophy text-success', 'Ranking w grupach procesowych (macierz)', _rankHtml(w.group_rankings));
+
+    _showModal(`${w.imie} ${w.nazwisko}`, w.zmiana_grupa || '', body);
+  });
 });
 </script>
 {% endblock %}

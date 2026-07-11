@@ -1,0 +1,298 @@
+{% extends 'base.html' %}
+{% block title %}Macierz procesowa{% endblock %}
+
+{% block extra_css %}
+<style>
+.gp-card {
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+.gp-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid transparent;
+}
+.gp-header:hover { background: #e9ecef; }
+.gp-header.open { border-bottom-color: #dee2e6; background: #fff; }
+.gp-nr {
+  font-size: .7rem;
+  font-weight: 700;
+  color: #6c757d;
+  min-width: 22px;
+}
+.gp-name { font-weight: 600; font-size: .88rem; flex: 1; }
+.gp-body { padding: 10px 12px; display: none; }
+.gp-body.open { display: block; }
+
+.match-pill {
+  font-size: .7rem;
+  padding: 2px 7px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.match-full  { background: #d1e7dd; color: #0a3622; }
+.match-part  { background: #fff3cd; color: #664d03; }
+.match-none  { background: #f8d7da; color: #58151c; }
+.match-empty { background: #e9ecef; color: #495057; }
+
+.top-rank { font-size: .82rem; }
+.top-rank td { padding: 3px 8px; vertical-align: middle; }
+.rank-pos { font-weight: 700; color: #6c757d; width: 22px; text-align: right; }
+.rank-score {
+  font-weight: 700;
+  color: #0d6efd;
+  text-align: right;
+  width: 52px;
+}
+.rank-bar-wrap { width: 80px; }
+.rank-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: #0d6efd;
+  min-width: 2px;
+}
+
+.map-act { font-size: .78rem; }
+.map-ok   { color: #198754; }
+.map-miss { color: #dc3545; }
+
+.stat-card {
+  text-align: center;
+  padding: 12px 16px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+}
+.stat-card .val { font-size: 1.8rem; font-weight: 800; line-height: 1; }
+.stat-card .lbl { font-size: .72rem; color: #6c757d; margin-top: 3px; }
+
+@media (prefers-color-scheme: dark) {
+  .gp-header  { background: #1e2329; }
+  .gp-header:hover { background: #2d3139; }
+  .gp-header.open { background: #16191f; }
+  .gp-card { border-color: #373d48; }
+  .stat-card { background: #1e2329; border-color: #373d48; }
+  .match-full  { background: #0f2d1d; color: #75b798; }
+  .match-part  { background: #2a2005; color: #ffda6a; }
+  .match-none  { background: #2c0b0e; color: #ea868f; }
+  .match-empty { background: #212529; color: #adb5bd; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h4 class="mb-0"><i class="bi bi-grid-3x3-gap-fill text-info me-2"></i>Macierz procesowa</h4>
+  <div class="d-flex gap-2">
+    <a href="?tryb=ranking"
+       class="btn btn-sm {% if tryb == 'ranking' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+      <i class="bi bi-trophy me-1"></i>Ranking pracowników
+    </a>
+    <a href="?tryb=mapowanie"
+       class="btn btn-sm {% if tryb == 'mapowanie' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+      <i class="bi bi-diagram-3 me-1"></i>Mapowanie AI ↔ DB
+    </a>
+  </div>
+</div>
+
+<!-- Statystyki -->
+<div class="row g-2 mb-3">
+  <div class="col-6 col-sm-4 col-md-2">
+    <div class="stat-card">
+      <div class="val">{{ stat_grup }}</div>
+      <div class="lbl">Grup procesowych</div>
+    </div>
+  </div>
+  <div class="col-6 col-sm-4 col-md-2">
+    <div class="stat-card">
+      <div class="val">{{ stat_czynnosci }}</div>
+      <div class="lbl">Czynności w PDF</div>
+    </div>
+  </div>
+  <div class="col-6 col-sm-4 col-md-2">
+    <div class="stat-card">
+      <div class="val text-success">{{ stat_matched }}</div>
+      <div class="lbl">Dopasowanych do DB</div>
+    </div>
+  </div>
+  <div class="col-6 col-sm-4 col-md-2">
+    <div class="stat-card">
+      <div class="val text-danger">{{ stat_unmatched }}</div>
+      <div class="lbl">Niedopasowanych</div>
+    </div>
+  </div>
+  <div class="col-6 col-sm-4 col-md-2">
+    <div class="stat-card">
+      <div class="val text-primary">{{ stat_z_danymi }}</div>
+      <div class="lbl">Grup z rankingiem</div>
+    </div>
+  </div>
+  <div class="col-6 col-sm-4 col-md-2">
+    <div class="stat-card">
+      <div class="val text-secondary">{{ stat_bez_def }}</div>
+      <div class="lbl">Grup bez czynności</div>
+    </div>
+  </div>
+</div>
+
+{% if tryb == 'mapowanie' %}
+<!-- ======= WIDOK MAPOWANIA ======= -->
+<div class="alert alert-info py-2 small mb-3">
+  <i class="bi bi-info-circle me-1"></i>
+  Mapowanie automatyczne: nazwy czynności z Macierzy Kompetencji (PDF) porównano z nazwami aktywności w bazie danych (plik KOMPETENCJE_PRACOWNIKÓW_ACT_NEW.xlsx) przez <strong>dokładne dopasowanie tekstu</strong>.
+  Zielony ✓ = nazwa znaleziona w DB &nbsp;·&nbsp; Czerwony ✗ = brak rekordu Aktywnosc o tej nazwie.
+</div>
+
+<div class="table-responsive">
+<table class="table table-sm table-hover" style="font-size:.82rem">
+  <thead class="table-light">
+    <tr>
+      <th style="width:32px">#</th>
+      <th style="width:40%">Grupa procesowa (PDF)</th>
+      <th>Czynności / Dopasowanie</th>
+      <th style="width:110px" class="text-center">Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for g in grupy %}
+    <tr>
+      <td class="text-muted">{{ g.nr }}</td>
+      <td class="fw-semibold">{{ g.nazwa }}</td>
+      <td>
+        {% if not g.czynnosci_pdf %}
+          <span class="text-muted fst-italic">Brak czynności w PDF</span>
+        {% else %}
+          <div class="map-act">
+            {% for n in g.matched_names %}
+              <div class="map-ok"><i class="bi bi-check-circle-fill me-1"></i>{{ n }}</div>
+            {% endfor %}
+            {% for n in g.unmatched_names %}
+              <div class="map-miss"><i class="bi bi-x-circle-fill me-1"></i>{{ n }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </td>
+      <td class="text-center">
+        {% if not g.czynnosci_pdf %}
+          <span class="match-pill match-empty">Pusta</span>
+        {% elif g.unmatched_names %}
+          {% if g.matched_names %}
+            <span class="match-pill match-part">{{ g.matched_count }}/{{ g.total_count }}</span>
+          {% else %}
+            <span class="match-pill match-none">0/{{ g.total_count }}</span>
+          {% endif %}
+        {% else %}
+          <span class="match-pill match-full">{{ g.matched_count }}/{{ g.total_count }}</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% else %}
+<!-- ======= WIDOK RANKINGU ======= -->
+<div class="small text-muted mb-2">
+  Kliknij grupę procesową, aby rozwinąć top 8 pracowników z najwyższą średnią oceną.
+  Oceny na skali 0–50 (źródło: plik KOMPETENCJE).
+</div>
+
+<div id="gpList">
+{% for g in grupy %}
+<div class="gp-card">
+  <div class="gp-header" data-idx="{{ forloop.counter0 }}">
+    <span class="gp-nr">{{ g.nr }}</span>
+    <span class="gp-name">{{ g.nazwa }}</span>
+
+    {% if not g.czynnosci_pdf %}
+      <span class="match-pill match-empty">Brak def.</span>
+    {% elif g.top %}
+      <span class="match-pill match-full">{{ g.top|length }} pracowników</span>
+    {% elif g.matched_count %}
+      <span class="match-pill match-part">Brak ocen</span>
+    {% else %}
+      <span class="match-pill match-none">Brak danych</span>
+    {% endif %}
+
+    <i class="bi bi-chevron-down ms-auto" style="font-size:.75rem;transition:transform .2s"></i>
+  </div>
+  <div class="gp-body" data-idx="{{ forloop.counter0 }}">
+    {% if g.top %}
+      <table class="table table-sm mb-0 top-rank">
+        <tbody>
+          {% for p in g.top %}
+          <tr>
+            <td class="rank-pos">{{ forloop.counter }}</td>
+            <td>
+              <span class="fw-semibold">{{ p.pracownik__nazwisko }}</span>
+              {{ p.pracownik__imie }}
+              {% if p.pracownik__zmiana_grupa %}
+                <span class="badge bg-light text-dark border ms-1" style="font-size:.65rem">{{ p.pracownik__zmiana_grupa }}</span>
+              {% endif %}
+            </td>
+            <td class="rank-bar-wrap">
+              <div class="rank-bar" style="width:{{ p.sredni_wynik|floatformat:0 }}%"></div>
+            </td>
+            <td class="rank-score">{{ p.sredni_wynik|floatformat:1 }}</td>
+            <td class="text-muted" style="font-size:.72rem;white-space:nowrap">
+              {{ p.liczba_aktywnosci }} akt.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="text-muted mt-1" style="font-size:.71rem">
+        Dopasowano {{ g.matched_count }}/{{ g.total_count }} czynności z PDF do bazy
+        {% if g.unmatched_names %}
+          · <span class="text-danger">{{ g.unmatched_names|length }} nieznanych</span>
+        {% endif %}
+      </div>
+    {% elif not g.czynnosci_pdf %}
+      <div class="text-muted small fst-italic">Grupa procesowa bez zdefiniowanych czynności w PDF.</div>
+    {% elif not g.matched_count %}
+      <div class="text-muted small">
+        <i class="bi bi-exclamation-triangle text-warning me-1"></i>
+        Żadna z {{ g.total_count }} czynności PDF nie istnieje w bazie aktywności.
+        <div class="map-act mt-1">
+          {% for n in g.unmatched_names %}
+            <div class="map-miss"><i class="bi bi-x-circle-fill me-1"></i>{{ n }}</div>
+          {% endfor %}
+        </div>
+      </div>
+    {% else %}
+      <div class="text-muted small">
+        Aktywności dopasowane ({{ g.matched_count }}), ale żaden pracownik nie ma oceny > 0.
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  document.querySelectorAll('.gp-header').forEach(hdr => {
+    hdr.addEventListener('click', function () {
+      const idx  = this.dataset.idx;
+      const body = document.querySelector(`.gp-body[data-idx="${idx}"]`);
+      const icon = this.querySelector('.bi-chevron-down, .bi-chevron-up');
+      const open = body.classList.toggle('open');
+      this.classList.toggle('open', open);
+      if (icon) icon.className = open ? 'bi bi-chevron-up ms-auto' : 'bi bi-chevron-down ms-auto';
+      icon.style.transform = '';
+    });
+  });
+})();
+</script>
+{% endblock %}

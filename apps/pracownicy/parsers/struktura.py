@@ -33,6 +33,12 @@ PRACOWNIK_NAGLOWKI = {
     'Przełożony': 'przelozony',
 }
 
+# Znormalizowane klucze (lowercase, bez spacji/podkreśleń) → pole modelu
+_NAGLOWKI_NORM = {
+    k.lower().replace(' ', '').replace('_', ''): v
+    for k, v in PRACOWNIK_NAGLOWKI.items()
+}
+
 DOMYSLNE_TYPY_ABSENCJI = {'Nieobecny'}
 
 
@@ -119,8 +125,9 @@ def _parsuj_arkusz(ws, sheet_name: str, typy_absencji: set) -> tuple[dict, list,
         if header is None:
             continue
         header_str = str(header).strip()
-        if header_str in PRACOWNIK_NAGLOWKI:
-            col_indices[PRACOWNIK_NAGLOWKI[header_str]] = i
+        header_norm = header_str.lower().replace(' ', '').replace('_', '')
+        if header_norm in _NAGLOWKI_NORM:
+            col_indices[_NAGLOWKI_NORM[header_norm]] = i
         else:
             d = _try_parse_date(header)
             if d:

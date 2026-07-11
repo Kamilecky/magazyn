@@ -9,11 +9,12 @@
 5. [Plany dzienne](#5-plany-dzienne)
 6. [Przydział pracowników do planu](#6-przydział-pracowników-do-planu)
 7. [Wyniki przydziału](#7-wyniki-przydziału)
-8. [Import danych](#8-import-danych)
-   - [Import planu zmianowego](#81-import-planu-zmianowego)
-   - [Import pracowników](#82-import-pracowników)
-   - [Import pracowników APT](#83-import-pracowników-apt)
-9. [Stanowiska](#9-stanowiska)
+8. [Macierz procesowa](#8-macierz-procesowa)
+9. [Import danych](#9-import-danych)
+   - [Import planu zmianowego](#91-import-planu-zmianowego)
+   - [Import pracowników](#92-import-pracowników)
+   - [Import pracowników APT](#93-import-pracowników-apt)
+10. [Stanowiska](#10-stanowiska)
 
 ---
 
@@ -173,19 +174,51 @@ Każdy pracownik pokazany jako karta z:
 
 Na dole każdej zakładki zmiany: lista pracowników, którym nie znaleziono żadnej pasującej aktywności.
 
+### Modale z informacjami szczegółowymi
+
+Kliknij w dowolny z poniższych elementów, aby otworzyć okno z informacjami:
+
+| Element | Co pokazuje modal |
+|---|---|
+| **Nazwa aktywności** (z ikoną ↗) | Grupy procesowe, do których należy aktywność + lista czynności z macierzy (✓ zielona = aktywność istnieje w bazie) + pracownicy przydzieleni z oceną procesową |
+| **Badge działu** (np. „Inbound") | Wszystkie grupy procesowe przypisane do tego działu |
+| **Karta pracownika** | Top 4 kompetencje pracownika + jego pozycja rankingowa w grupach procesowych |
+
 ### Przelicz ponownie
 
 Przycisk **Przelicz ponownie** w prawym górnym rogu strony uruchamia przydział od nowa (po potwierdzeniu).
 
 ---
 
-## 8. Import danych
+## 8. Macierz procesowa
+
+**Ścieżka:** Menu → **Pracownicy** → **Macierz procesowa** (lub `/pracownicy/macierz-procesowa/`)
+
+Macierz mapuje 57 grup procesowych na aktywności w bazie danych i pokazuje oceny pracowników per grupa.
+
+### Tryb: Mapowanie
+
+Domyślny widok (`?tryb=mapowanie`). Tabela aktywności z kolorowymi wskaźnikami:
+- **Zielony** — czynnosc z grupy procesowej istnieje w bazie danych
+- **Czerwony** — czynnosc z macierzy nie ma odpowiednika w bazie
+
+Służy do weryfikacji, czy nazwy aktywności w plikach KOMPETENCJE zgadzają się z nazwami w macierzy kompetencji PDF.
+
+### Tryb: Ranking
+
+Widok `?tryb=ranking`. Dla każdej grupy procesowej lista pracowników z najwyższą średnią oceną (avg wszystkich czynności grupy). Pokazuje, kto jest najlepszym kandydatem do danego procesu.
+
+System przydziału pracowników automatycznie korzysta z tych rankingów — pracownicy z wysokimi ocenami w danej grupie procesowej są kierowani do odpowiadających aktywności w planie.
+
+---
+
+## 9. Import danych
 
 Każdy import działa dwuetapowo: **wgraj → podejrzyj → zatwierdź**.
 
 ---
 
-## 8.1 Import planu zmianowego
+## 9.1 Import planu zmianowego
 
 **Ścieżka:** Menu → **Import danych** → **Import planu zmianowego**
 
@@ -214,7 +247,7 @@ Każdy import działa dwuetapowo: **wgraj → podejrzyj → zatwierdź**.
 
 ---
 
-## 8.2 Import pracowników
+## 9.2 Import pracowników
 
 **Ścieżka:** Menu → **Import danych** → **Import pracowników**
 
@@ -252,7 +285,7 @@ Gdy wgrasz oba pliki jednocześnie, dane z pliku Struktury **nadpisują** dane z
 
 ---
 
-## 8.3 Import pracowników APT
+## 9.3 Import pracowników APT
 
 **Ścieżka:** Menu → **Import danych** → **Import pracowników APT**
 
@@ -278,7 +311,7 @@ Mapowanie jest zapamiętywane — nie trzeba go ustawiać przy każdym imporcie.
 
 ---
 
-## 9. Stanowiska
+## 10. Stanowiska
 
 **Ścieżka:** Menu → **Stanowiska**
 
@@ -293,4 +326,4 @@ Widok kart stanowisk magazynowych. Każda karta zawiera parametry fizyczne (wyma
 
 ---
 
-*Instrukcja obsługi — System Magazynowy v2.1 | 2026-07-04*
+*Instrukcja obsługi — System Magazynowy v2.2 | 2026-07-11*

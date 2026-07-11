@@ -1,2 +1,4 @@
-Co zrobić: Dopasuj działy z pliku plan dzienny do kompetencji
-z pliku kompetencji
+Co zrobić: Porównaj przydzielenie pracowników z planu aktywnego 
+http://127.0.0.1:8000/pracownicy/plany/5/wyniki/ do wyników jakie są 
+w macierzy http://127.0.0.1:8000/pracownicy/macierz-procesowa/
+

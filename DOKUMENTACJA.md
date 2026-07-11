@@ -8,11 +8,13 @@
 4. [Baza danych — modele](#4-baza-danych--modele)
 5. [Moduły i funkcje](#5-moduły-i-funkcje)
 6. [Algorytm przydziału pracowników](#6-algorytm-przydziału-pracowników)
-7. [Routing URL](#7-routing-url)
-8. [Konfiguracja i zmienne środowiskowe](#8-konfiguracja-i-zmienne-środowiskowe)
-9. [Uruchomienie projektu](#9-uruchomienie-projektu)
-10. [Format plików do importu](#10-format-plików-do-importu)
-11. [Znane ograniczenia](#11-znane-ograniczenia)
+7. [Macierz procesowa i fuzzy-matching](#7-macierz-procesowa-i-fuzzy-matching)
+8. [System modali — wyniki_przydzialu.html](#8-system-modali--wyniki_przydzialhtml)
+9. [Routing URL](#9-routing-url)
+10. [Konfiguracja i zmienne środowiskowe](#10-konfiguracja-i-zmienne-środowiskowe)
+11. [Uruchomienie projektu](#11-uruchomienie-projektu)
+12. [Format plików do importu](#12-format-plików-do-importu)
+13. [Znane ograniczenia](#13-znane-ograniczenia)
 
 ---
 
@@ -399,6 +401,10 @@ Funkcja `_wykonaj_przydzial(plan: PlanDzienny) -> dict` w `apps/pracownicy/views
 - `PracownikAPT` + `OcenaAPT` → `comp_apt: {(apt_pk, akt_pk): max_ocena}`
 - `AbsencjaPracownika` dla `plan.data_planu` → `nieobecni_pks: set[int]`
 
+### 6.1a Macierz procesowa w przydziale
+
+Od wersji 2.2 algorytm używa `worker_group_score[(worker_pk, plan_akt_pk)]` — średniej oceny pracownika ze wszystkich czynności w grupach procesowych dopasowanych fuzzy do danej aktywności planu. Szczegóły w sekcji 7.
+
 ### 6.2 Pojemność aktywności
 
 ```python
@@ -419,8 +425,12 @@ Pracownik trafia do zmiany gdy jego `zmiana_grupa` zaczyna się na odpowiednią 
 
 ### 6.4 Kolejność wypełniania do `capacity`
 
+**Faza 1 — pre-rezerwacja wg macierzy procesowej:**
+Każdy pracownik z niezerowym `worker_group_score` jest kierowany do aktywności, gdzie ma najwyższy wynik. Pracownicy z najwyższymi wynikami obsługiwani pierwsi (greedy, sort desc).
+
+**Faza 2 — uzupełnienie standardowe:**
 1. **Pracownicy priorytetowi** (`departament` ∈ {`IN`, `OB`, `FF`, `ZW`, `PR`}) pasujący do aktywności
-2. **Pozostali pracownicy** pasujący do aktywności
+2. **Pozostali pracownicy** pasujący do aktywności — sortowani wg `worker_group_score` desc
 3. **Pracownicy APT** sortowani malejąco wg oceny dla tej aktywności
 
 ### 6.5 Kryteria dopasowania pracownika do aktywności (`_pasuje_do_aktywnosci`)
@@ -485,9 +495,88 @@ Pracownicy z danej zmiany, którym mimo force-assign nie znaleziono aktywności,
 
 ---
 
-## 7. Routing URL
+## 7. Macierz procesowa i fuzzy-matching
+
+### 7.1 `grupy_procesowe.py`
+
+Plik `apps/pracownicy/grupy_procesowe.py` zawiera stałą `GRUPY_PROCESOWE: list[dict]` — 57 grup procesowych, 158 czynności. Każda grupa:
+
+```python
+{
+    "nr": 9,
+    "nazwa": "Batch Mezz > szt > (Sort/PTS/PTL) [Inbound]",
+    "czynnosci": [
+        "RETAIL Batch Mezz > szt > (Sort/PTS/PTL) P0/P1",
+        "SPL STOCK Batch Mezz > szt > (Sort/PTS/PTL) P0/P1",
+    ]
+}
+```
+
+Czynności w grupach procesowych odpowiadają dokładnie nazwom `Aktywnosc.nazwa` w bazie (z pliku KOMPETENCJE). Nazwy aktywności w planie dziennym są innymi (skróconymi) nazwami — stąd potrzeba fuzzy-matchingu.
+
+### 7.2 Funkcje module-level (views.py)
+
+Zdefiniowane na poziomie modułu (poza widokami), dostępne zarówno w `_wykonaj_przydzial` jak i `wyniki_przydzialu`:
+
+| Symbol | Opis |
+|---|---|
+| `_GP` | Alias `GRUPY_PROCESOWE` |
+| `_GP_BY_NR` | `{nr: grupa}` dla szybkiego lookup |
+| `_akt_to_group_exact` | `{czynnosc_nazwa: grupa}` — exact match lookup |
+| `_MANUAL_MAP` | `{_nrm(nazwa): [nr, ...]}` — ręczne mapowania dla niepasowalnych nazw |
+| `_nrm(s)` | Normalizacja: lowercase + collapse whitespace + usuń spację przed `)` lub `]` |
+| `_words(s)` | `_nrm` + usuń interpunkcję + filtr słów ≥ 3 znaki |
+| `_find_all_groups(nazwa)` | Fuzzy-match nazwy aktywności → lista grup |
+
+### 7.3 Łańcuch dopasowań `_find_all_groups`
+
+1. **Exact** — `_akt_to_group_exact.get(akt_nazwa)` (czynnosc ≡ nazwa)
+2. **Substring nazwy grupy** (min 3 znaki) — `norm in g_norm or g_norm in norm`
+3. **Word-set nazwy grupy** (min 2 słowa) — jeden zbiór ⊆ drugiego
+4. **Substring czynności** (min 4 znaki) — obu kierunki
+5. **Word-set czynności** (min 2 słowa)
+6. **`_MANUAL_MAP`** — ręczne mapowania dla znanych literówek i agregatów:
+   - `Konsolidacje + zasileniacC(P3/P4/P7)/R1/R2` → [11, 49] (literówka)
+   - `Retail OUT` → [54]; `Total Batch` → [9, 38, 39, 40]
+   - `Prasa VAS/KDR/Hurty/Przyjęcia/Uzupełnienia` → [24, …]
+   - `ECOM PACK` → [52]; `Zwroty Retail IN/OUT` → [7, 21, 27] / [22, 54]
+
+**Wynik:** 75/78 aktywności planu dopasowanych (96%). Bez grupy: `SKU do przyjęcia`, `Struktura`, `Suma do Przyjęcia` (metryki agregatowe).
+
+### 7.4 Widok macierzy procesowej (`/pracownicy/macierz-procesowa/`)
+
+Tryby (`?tryb=`):
+- `mapowanie` (domyślny) — tabela: aktywność DB × grupy procesowe, kolor komórki = czy czynnosc istnieje w DB
+- `ranking` — ranking pracowników per grupa procesowa (avg ocen z czynności grupy)
+
+---
+
+## 8. System modali — wyniki_przydzialu.html
+
+Strona `/pracownicy/plany/<pk>/wyniki/` zawiera jeden modal Bootstrap 5 (`#aktModal`) obsługiwany przez trzy typy triggerów:
+
+| Trigger | Data | Zawartość modalu |
+|---|---|---|
+| `.akt-modal-trigger` (nagłówek aktywności) | `data-akt-nazwa` | Grupy procesowe + czynności (✓ zielona = jest w DB) + pracownicy z oceną |
+| `.dzial-modal-trigger` (badge działu) | `data-dzial-nazwa` | Wszystkie grupy procesowe działu (union po aktywnościach) |
+| `.prac-modal-trigger` (karta pracownika) | `data-prac-pk` | Top 4 kompetencje pracownika + jego ranking w grupach procesowych |
+
+Dane JSON osadzone w szablonie (blok `extra_js`):
+- `MODAL_DATA` — `{nazwa_aktywności: {groups: [...], workers: [...]}}`
+- `WORKER_DATA` — `{pk: {imie, nazwisko, zmiana_grupa, wynik, top_komp, group_rankings}}`
+- `DZIAL_DATA` — `{nazwa_działu: {groups: [...]}}`
+
+### 8.1 Kolorowanie pracowników APT
+
+Pracownicy z `apt=True` wyświetlani z `background-color:#fefce8` (inline style). Bootstrap `bg-warning-subtle` nie jest używany — w trybie ciemnym renderuje jako ciemnobrązowy.
+
+---
+
+## 9. Routing URL
 
 ```
+/pracownicy/macierz-procesowa/                  → macierz procesowa (tryb=mapowanie|ranking)
+
 /                                               → redirect do /konta/dashboard/
 /admin/                                         → panel administracyjny Django
 
@@ -526,7 +615,7 @@ Pracownicy z danej zmiany, którym mimo force-assign nie znaleziono aktywności,
 
 ---
 
-## 8. Konfiguracja i zmienne środowiskowe
+## 10. Konfiguracja i zmienne środowiskowe
 
 Plik `.env` w katalogu głównym:
 
@@ -550,7 +639,7 @@ print(get_random_secret_key())                 # SECRET_KEY
 
 ---
 
-## 9. Uruchomienie projektu
+## 11. Uruchomienie projektu
 
 ### Wymagania
 
@@ -561,8 +650,8 @@ print(get_random_secret_key())                 # SECRET_KEY
 ### Instalacja
 
 ```bash
-# Aktywacja venv (Windows)
-C:\Odzyskane\PythonVSFolder\.vscode\My_Django_Projects\myvenv\Scripts\activate
+# Aktywacja venv (Windows, PowerShell) — lokalne .venv w projekcie
+.venv\Scripts\Activate.ps1
 
 pip install -r requirements.txt
 
@@ -579,7 +668,7 @@ Katalog `tmp/` tworzony automatycznie przez `_tmp_dir()`.
 
 ---
 
-## 10. Format plików do importu
+## 12. Format plików do importu
 
 ### 10.1 Plan dzienny — `Plan_dzienny_NEW.xlsx`
 
@@ -629,15 +718,15 @@ Arkusz `PracownicyAPT01`:
 
 ---
 
-## 11. Znane ograniczenia
+## 13. Znane ograniczenia
 
 | Kwestia | Status |
 |---|---|
 | Obsada stanowisk w `/stanowiska/` i `/przydzialy/` | Stub (0) — stary model `PlanZmiany` usunięty, integracja z nowym systemem nie zaimplementowana |
 | Raport Excel (`/raporty/obsada/excel/`) | Może wymagać aktualizacji pod nowy schemat modeli |
-| Fuzzy-matching nazw aktywności | Nie ma. Nazwy w planie muszą być identyczne z nazwami w KOMPETENCJE lub dopasowywane przez dział/departament/kompetencje |
+| 3 aktywności bez grupy procesowej | `SKU do przyjęcia`, `Struktura`, `Suma do Przyjęcia` — metryki agregatowe, brak odpowiedniej grupy w macierzy |
 | Absencje dla planów bez `data_planu` | Nie są sprawdzane — flaga `nieobecny` zawsze `False` |
 
 ---
 
-*Dokumentacja zaktualizowana: 2026-07-04 | System Magazynowy v2.1*
+*Dokumentacja zaktualizowana: 2026-07-11 | System Magazynowy v2.2*
