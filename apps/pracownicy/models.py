@@ -156,10 +156,11 @@ class OcenaAPT(models.Model):
 
 
 class KonfiguracjaZmian(models.Model):
-    LITERA_CHOICES = [('A', 'A'), ('B', 'B'), ('C', 'C')]
+    LITERA_CHOICES = [('A', 'A'), ('B', 'B'), ('C', 'C'), ('D', 'D')]
     zmiana_1 = models.CharField(max_length=1, choices=LITERA_CHOICES, default='A', verbose_name='Zmiana I')
     zmiana_2 = models.CharField(max_length=1, choices=LITERA_CHOICES, default='B', verbose_name='Zmiana II')
     zmiana_3 = models.CharField(max_length=1, choices=LITERA_CHOICES, default='C', verbose_name='Zmiana III')
+    zmiana_4 = models.CharField(max_length=1, choices=LITERA_CHOICES, default='D', verbose_name='Zmiana D (PRASA/KDR)')
 
     class Meta:
         verbose_name = 'Konfiguracja zmian'
@@ -170,7 +171,7 @@ class KonfiguracjaZmian(models.Model):
         return obj
 
     def jako_slownik(self) -> dict:
-        return {1: self.zmiana_1, 2: self.zmiana_2, 3: self.zmiana_3}
+        return {1: self.zmiana_1, 2: self.zmiana_2, 3: self.zmiana_3, 4: self.zmiana_4}
 
 
 class PrzydzialDzienny(models.Model):

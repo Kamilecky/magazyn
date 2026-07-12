@@ -415,6 +415,15 @@ def _dept_for_dzial(dzial: str) -> str:
     return ''
 
 
+def _sektor(arkusz: str) -> str:
+    """Wyciągnij skrót sektora z nazwy arkusza, np. 'Struktura FF' → 'FF'."""
+    s = arkusz.strip()
+    pfx = 'struktura '
+    if s.lower().startswith(pfx):
+        return s[len(pfx):].strip()
+    return ''
+
+
 def _pasuje_do_aktywnosci(p, akt_nazwa_norm: str, akt_dzial: str) -> bool:
     """True jeśli pracownik pasuje do aktywności przez dowolne kryterium."""
     return (
@@ -542,6 +551,7 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
 
     globally_assigned_prac: set[int] = set()
     globally_assigned_apt: set[int] = set()
+    globally_absent_shown: set[int] = set()  # absent workers already placed in some shift's fillers
 
     litera_map = KonfiguracjaZmian.pobierz().jako_slownik()
 
@@ -567,10 +577,12 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
         unassigned_priority: set[int] = {
             p.pk for p in pracownicy
             if _w_tej_zmianie(p) and p.departament.upper() in _PRIORITY_DEPTS
+            and p.pk not in nieobecni_pks
         }
         unassigned_others: set[int] = {
             p.pk for p in pracownicy
             if _w_tej_zmianie(p) and p.departament.upper() not in _PRIORITY_DEPTS
+            and p.pk not in nieobecni_pks
         }
 
         def _apt_w_tej_zmianie(apt) -> bool:
@@ -693,22 +705,55 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
         fillers: list[dict] = []
         for pk in (*unassigned_priority, *unassigned_others):
             obj = pk_to_p[pk]
+            if shift_akt_pks and any(
+                _pasuje_do_aktywnosci(obj, _norm(akt_cache[apk].nazwa), akt_cache[apk].dzial)
+                or apk in komp_map.get(pk, set())
+                or worker_group_score.get((pk, apk), 0.0) > 0
+                for apk in shift_akt_pks
+            ):
+                powod = 'capacity'
+            elif not shift_akt_pks:
+                powod = 'no_activities'
+            else:
+                powod = 'no_match'
             fillers.append({'pk': pk, 'imie': obj.imie, 'nazwisko': obj.nazwisko,
                             'zmiana_grupa': obj.zmiana_grupa,
-                            'nieobecny': pk in nieobecni_pks,
+                            'nieobecny': False, 'powod': powod,
+                            'sektor': _sektor(obj.arkusz),
                             'wynik': None, 'zapychacz': True, 'apt': False})
+        # Nieobecni tej zmiany → fillers z flagą nieobecny=True
+        for p in pracownicy:
+            if p.pk not in nieobecni_pks or p.pk in globally_absent_shown:
+                continue
+            zg = p.zmiana_grupa.upper() if p.zmiana_grupa else ''
+            if zg.startswith(litera) or not zg:
+                fillers.append({'pk': p.pk, 'imie': p.imie, 'nazwisko': p.nazwisko,
+                                'zmiana_grupa': p.zmiana_grupa,
+                                'nieobecny': True, 'powod': 'nieobecny',
+                                'sektor': _sektor(p.arkusz),
+                                'wynik': None, 'zapychacz': True, 'apt': False})
+                globally_absent_shown.add(p.pk)
+                globally_assigned_prac.add(p.pk)  # zapobiega podwójnemu pojawieniu w kolejnych zmianach
         for apt_pk in unassigned_apt:
             obj = apt_pk_to_p[apt_pk]
+            powod_apt = ('capacity' if any(comp_apt.get((apt_pk, apk), 0.0) > 0 for apk in shift_akt_pks)
+                         else 'no_match')
             fillers.append({'pk': apt_pk, 'imie': obj.imie, 'nazwisko': obj.nazwisko,
                             'zmiana_grupa': obj.grupa,
-                            'nieobecny': False,
+                            'nieobecny': False, 'powod': powod_apt,
                             'wynik': None, 'zapychacz': True, 'apt': True})
         if fillers:
+            powody_cnt = {
+                'nieobecny': sum(1 for f in fillers if f.get('nieobecny')),
+                'capacity':  sum(1 for f in fillers if f.get('powod') == 'capacity'),
+                'no_match':  sum(1 for f in fillers if f.get('powod') == 'no_match'),
+            }
             zmiana_result['__fillers__'] = {
                 'nazwa': '(bez przypisanej aktywności)',
                 'dzial': '',
                 'wymagana': len(fillers),
                 'pracownicy': sorted(fillers, key=lambda w: (w['nazwisko'], w['imie'])),
+                'powody': powody_cnt,
                 'godziny': {},
             }
 
@@ -721,6 +766,176 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
                     globally_assigned_prac.add(w['pk'])
 
         result[str(zmiana)] = zmiana_result
+
+    # ─── Zmiana D (PRASA / KDR) ───────────────────────────────────────────────
+    litera_d = litera_map.get(4, 'D')
+    d_pracownicy = [p for p in pracownicy if p.zmiana_grupa.upper().startswith(litera_d)]
+    d_prac_pks: set[int] = {p.pk for p in d_pracownicy}
+
+    if d_prac_pks:
+        _D_GROUPS = {24, 56}
+        _D_DEPT_KW = frozenset({'kdr', 'zwrot', 'prasa'})
+        d_akt_pks: set[int] = set()
+        for akt_pk in akt_pks_in_plan:
+            akt = akt_cache[akt_pk]
+            groups = _find_all_groups(akt.nazwa)
+            dzial_n = _norm(akt.dzial)
+            in_d_dept = any(kw in dzial_n for kw in _D_DEPT_KW)
+            if ((any(g['nr'] in _D_GROUPS for g in groups) and in_d_dept)
+                    or _dept_matches_akt('PR', akt.dzial)):
+                d_akt_pks.add(akt_pk)
+
+        # Godziny D: max z wszystkich zmian (1/2/3) per godzina
+        d_act_godziny: dict[int, dict[int, float]] = {}
+        for akt_pk in d_akt_pks:
+            agg: dict[int, float] = {}
+            for z in (1, 2, 3):
+                for h, v in plan_godziny.get((akt_pk, z), {}).items():
+                    agg[h] = max(agg.get(h, 0.0), v)
+            if agg:
+                d_act_godziny[akt_pk] = agg
+
+        d_shift_acts: list[tuple] = []
+        for akt_pk in sorted(d_akt_pks):
+            g = d_act_godziny.get(akt_pk)
+            if not g:
+                continue
+            max_wym = max(g.values(), default=0.0)
+            if max_wym <= 0:
+                continue
+            d_shift_acts.append((akt_pk, math.ceil(max_wym), g))
+        d_shift_acts.sort(key=lambda x: -x[1])
+
+        d_shift_akt_pks = {apk for apk, _, _ in d_shift_acts}
+        d_akt_assignments: dict[int, list[dict]] = {apk: [] for apk, _, _ in d_shift_acts}
+        d_akt_meta: dict[int, tuple] = {apk: (cap, g) for apk, cap, g in d_shift_acts}
+        d_unassigned: set[int] = {pk for pk in d_prac_pks if pk not in nieobecni_pks}
+
+        d_apt_list = [apt for apt in apt_pracownicy if (apt.grupa or '').upper().startswith(litera_d)]
+        d_unassigned_apt: set[int] = {apt.pk for apt in d_apt_list}
+
+        # Faza 1 D: pre-rezerwacja wg macierzy procesowej
+        d_worker_best: dict[int, tuple[float, int]] = {}
+        for wpk in d_unassigned:
+            best_s, best_a = 0.0, -1
+            for apk in d_shift_akt_pks:
+                s = worker_group_score.get((wpk, apk), 0.0)
+                if s > best_s:
+                    best_s, best_a = s, apk
+            if best_a != -1 and best_s > 0:
+                d_worker_best[wpk] = (best_s, best_a)
+
+        for wpk, (score, apk) in sorted(d_worker_best.items(), key=lambda x: -x[1][0]):
+            cap = d_akt_meta[apk][0]
+            if len(d_akt_assignments[apk]) >= cap:
+                continue
+            obj = pk_to_p[wpk]
+            d_akt_assignments[apk].append({
+                'pk': wpk, 'imie': obj.imie, 'nazwisko': obj.nazwisko,
+                'zmiana_grupa': obj.zmiana_grupa,
+                'nieobecny': wpk in nieobecni_pks,
+                'wynik': round(score, 1), 'zapychacz': False, 'apt': False,
+            })
+            d_unassigned.discard(wpk)
+
+        # Faza 2 D: uzupełnienie wg standardowego dopasowania
+        for apk, cap, _ in d_shift_acts:
+            akt = akt_cache[apk]
+            assigned = d_akt_assignments[apk]
+            if len(assigned) < cap:
+                candidates = [p for p in d_unassigned
+                              if (_pasuje_do_aktywnosci(pk_to_p[p], _norm(akt.nazwa), akt.dzial)
+                                  or apk in komp_map.get(p, set())
+                                  or worker_group_score.get((p, apk), 0.0) > 0)]
+                candidates.sort(key=lambda p: (
+                    -worker_group_score.get((p, apk), 0.0),
+                    pk_to_p[p].nazwisko,
+                ))
+                for pk in candidates[:cap - len(assigned)]:
+                    obj = pk_to_p[pk]
+                    s2 = worker_group_score.get((pk, apk))
+                    assigned.append({
+                        'pk': pk, 'imie': obj.imie, 'nazwisko': obj.nazwisko,
+                        'zmiana_grupa': obj.zmiana_grupa,
+                        'nieobecny': pk in nieobecni_pks,
+                        'wynik': round(s2, 1) if s2 else None, 'zapychacz': False, 'apt': False,
+                    })
+                    d_unassigned.discard(pk)
+
+            # Faza 3 D: APT
+            apt_sorted = sorted(d_unassigned_apt, key=lambda pk: -comp_apt.get((pk, apk), 0.0))
+            for apt_pk2 in apt_sorted[:cap - len(assigned)]:
+                obj = apt_pk_to_p[apt_pk2]
+                assigned.append({
+                    'pk': apt_pk2, 'imie': obj.imie, 'nazwisko': obj.nazwisko,
+                    'zmiana_grupa': obj.grupa,
+                    'nieobecny': False,
+                    'wynik': None, 'zapychacz': False, 'apt': True,
+                })
+                d_unassigned_apt.discard(apt_pk2)
+
+        # Zbuduj wynik zmiany D
+        d_result: dict = {}
+        for apk, _, _ in sorted(d_shift_acts, key=lambda x: akt_cache[x[0]].nazwa):
+            workers = d_akt_assignments.get(apk, [])
+            cap, godziny_d = d_akt_meta[apk]
+            akt = akt_cache[apk]
+            d_result[str(apk)] = {
+                'nazwa': akt.nazwa,
+                'dzial': akt.dzial,
+                'wymagana': cap,
+                'pracownicy': workers,
+                'godziny': {str(h): v for h, v in sorted(godziny_d.items())},
+            }
+
+        # Fillers D
+        d_fillers: list[dict] = []
+        for wpk in d_unassigned:
+            obj = pk_to_p[wpk]
+            powod_d = ('capacity' if d_shift_akt_pks and any(
+                _pasuje_do_aktywnosci(obj, _norm(akt_cache[apk].nazwa), akt_cache[apk].dzial)
+                or apk in komp_map.get(wpk, set())
+                or worker_group_score.get((wpk, apk), 0.0) > 0
+                for apk in d_shift_akt_pks
+            ) else ('no_activities' if not d_shift_akt_pks else 'no_match'))
+            d_fillers.append({'pk': wpk, 'imie': obj.imie, 'nazwisko': obj.nazwisko,
+                              'zmiana_grupa': obj.zmiana_grupa,
+                              'nieobecny': False, 'powod': powod_d,
+                              'sektor': _sektor(obj.arkusz),
+                              'wynik': None, 'zapychacz': True, 'apt': False})
+        # Nieobecni D → fillers z flagą
+        for p in d_pracownicy:
+            if p.pk in nieobecni_pks and p.pk not in globally_absent_shown:
+                d_fillers.append({'pk': p.pk, 'imie': p.imie, 'nazwisko': p.nazwisko,
+                                  'zmiana_grupa': p.zmiana_grupa,
+                                  'nieobecny': True, 'powod': 'nieobecny',
+                                  'sektor': _sektor(p.arkusz),
+                                  'wynik': None, 'zapychacz': True, 'apt': False})
+                globally_absent_shown.add(p.pk)
+        for apt_pk in d_unassigned_apt:
+            obj = apt_pk_to_p[apt_pk]
+            powod_apt_d = ('capacity' if any(comp_apt.get((apt_pk, apk), 0.0) > 0 for apk in d_shift_akt_pks)
+                           else 'no_match')
+            d_fillers.append({'pk': apt_pk, 'imie': obj.imie, 'nazwisko': obj.nazwisko,
+                              'zmiana_grupa': obj.grupa,
+                              'nieobecny': False, 'powod': powod_apt_d,
+                              'wynik': None, 'zapychacz': True, 'apt': True})
+        if d_fillers:
+            d_powody = {
+                'nieobecny': sum(1 for f in d_fillers if f.get('nieobecny')),
+                'capacity':  sum(1 for f in d_fillers if f.get('powod') == 'capacity'),
+                'no_match':  sum(1 for f in d_fillers if f.get('powod') == 'no_match'),
+            }
+            d_result['__fillers__'] = {
+                'nazwa': '(bez przypisanej aktywności)',
+                'dzial': '',
+                'wymagana': len(d_fillers),
+                'pracownicy': sorted(d_fillers, key=lambda w: (w['nazwisko'], w['imie'])),
+                'powody': d_powody,
+                'godziny': {},
+            }
+
+        result['4'] = d_result
 
     return result
 
@@ -743,7 +958,12 @@ def przydziel_plan(request, pk):
     return redirect('pracownicy:wyniki_przydzialu', pk=pk)
 
 
-ZMIANA_NAZWA = {1: 'Zmiana I (6–13)', 2: 'Zmiana II (14–21)', 3: 'Zmiana III (22–5)'}
+ZMIANA_NAZWA = {
+    1: 'Zmiana I (6–13)',
+    2: 'Zmiana II (14–21)',
+    3: 'Zmiana III (22–5)',
+    4: 'Zmiana D (PRASA/KDR)',
+}
 
 
 @login_required
@@ -769,6 +989,20 @@ def wyniki_przydzialu(request, pk):
             if akt_key == '__fillers__':
                 akt_data['dzial'] = ''
                 total_fillers += n
+                prac = akt_data['pracownicy']
+                # Enrich sektor from DB for backwards-compat (old JSON won't have it)
+                etat_prac = [p for p in prac if not p.get('apt')]
+                missing_sektor_pks = [p['pk'] for p in etat_prac if 'sektor' not in p]
+                if missing_sektor_pks:
+                    arkusz_map = dict(
+                        Pracownik.objects.filter(pk__in=missing_sektor_pks)
+                        .values_list('pk', 'arkusz')
+                    )
+                    for p in etat_prac:
+                        if 'sektor' not in p:
+                            p['sektor'] = _sektor(arkusz_map.get(p['pk'], ''))
+                akt_data['pracownicy_etat'] = etat_prac
+                akt_data['pracownicy_apt_list'] = [p for p in prac if p.get('apt')]
                 dzialy_org.setdefault('(bez przypisanej aktywności)', []).append(akt_data)
             else:
                 dzial = akt_data['dzial'] or '(bez działu)'
@@ -796,6 +1030,16 @@ def wyniki_przydzialu(request, pk):
         2: [14, 15, 16, 17, 18, 19, 20, 21],
         3: [22, 23, 0, 1, 2, 3, 4, 5],
     }
+    # Godziny D: wyznacz dynamicznie z rzeczywistych danych
+    if 4 in zmiany_dane:
+        _d_hours: set[int] = set()
+        for _akts_d in zmiany_dane[4]['dzialy'].values():
+            for _akt_d in _akts_d:
+                for _h_str, _v in (_akt_d.get('godziny') or {}).items():
+                    if _v > 0:
+                        _d_hours.add(int(_h_str))
+        _zmiana_godziny[4] = sorted(_d_hours, key=lambda h: h if h >= 6 else h + 24)
+
     # Dodaj godziny_ordered (lista [[h, wymagane], ...]) do każdej aktywności
     for zmiana_int, zd in zmiany_dane.items():
         hour_order = _zmiana_godziny.get(zmiana_int, [])

@@ -36,15 +36,15 @@
 <!-- Podsumowanie zbiorcze -->
 <div class="row g-3 mb-4">
   {% for zmiana_int, zd in zmiany_dane.items %}
-  <div class="col-md-4">
+  <div class="col-md-6 col-lg-3">
     <div class="card border-0 shadow-sm">
       <div class="card-body text-center py-3">
         <div class="small text-uppercase text-muted fw-semibold mb-1">
           {{ zd.nazwa }}
           {% with lit=litera_map|get_item:zmiana_int %}{% if lit %}
           <span class="badge ms-1
-            {% if lit == 'A' %}bg-success{% elif lit == 'B' %}bg-primary{% else %}bg-danger{% endif %}"
-            style="font-size:.7rem">{{ lit }}</span>
+            {% if lit == 'A' %}bg-success{% elif lit == 'B' %}bg-primary{% elif lit == 'D' %}text-white{% else %}bg-danger{% endif %}"
+            style="font-size:.7rem{% if lit == 'D' %};background-color:#7c3aed{% endif %}">{{ lit }}</span>
           {% endif %}{% endwith %}
         </div>
         <div class="fs-4 fw-bold text-success">{{ zd.total_pracownicy }}</div>
@@ -68,12 +68,12 @@
     <button class="nav-link {% if forloop.first %}active{% endif %}"
             id="tab-zm{{ zmiana_int }}" data-bs-toggle="tab"
             data-bs-target="#zm{{ zmiana_int }}" type="button" role="tab">
-      <i class="bi bi-{% if zmiana_int == 1 %}sunrise{% elif zmiana_int == 2 %}sun{% else %}moon-stars{% endif %} me-1"></i>
-      Zm. {{ zmiana_int }}
+      <i class="bi bi-{% if zmiana_int == 1 %}sunrise{% elif zmiana_int == 2 %}sun{% elif zmiana_int == 4 %}layers{% else %}moon-stars{% endif %} me-1"></i>
+      Zm. {% if zmiana_int == 4 %}D{% else %}{{ zmiana_int }}{% endif %}
       {% with lit=litera_map|get_item:zmiana_int %}{% if lit %}
       <span class="badge ms-1
-        {% if lit == 'A' %}bg-success{% elif lit == 'B' %}bg-primary{% else %}bg-danger{% endif %}"
-        style="font-size:.72rem">{{ lit }}</span>
+        {% if lit == 'A' %}bg-success{% elif lit == 'B' %}bg-primary{% elif lit == 'D' %}text-white{% else %}bg-danger{% endif %}"
+        style="font-size:.72rem{% if lit == 'D' %};background-color:#7c3aed{% endif %}">{{ lit }}</span>
       {% endif %}{% endwith %}
       <span class="badge bg-success ms-1">{{ zd.total_pracownicy }}</span>
     </button>
@@ -110,18 +110,64 @@
           </span>
           <span class="badge bg-secondary">{{ akt.przydzielono }}</span>
         </div>
-        <div class="px-3 py-2">
+        {% if akt.powody %}
+        <div class="px-3 pt-2 pb-1 d-flex flex-wrap gap-3" style="font-size:.78rem;border-bottom:1px solid #e5e7eb">
+          {% if akt.powody.nieobecny %}
+          <span class="text-danger d-flex align-items-center gap-1">
+            <i class="bi bi-x-circle-fill"></i>{{ akt.powody.nieobecny }} nieobecnych
+          </span>
+          {% endif %}
+          {% if akt.powody.capacity %}
+          <span class="d-flex align-items-center gap-1" style="color:#d97706">
+            <i class="bi bi-hourglass-split"></i>{{ akt.powody.capacity }}
+            <span class="text-muted">— pasują, lecz aktywności są zapełnione</span>
+          </span>
+          {% endif %}
+          {% if akt.powody.no_match %}
+          <span class="text-secondary d-flex align-items-center gap-1">
+            <i class="bi bi-slash-circle"></i>{{ akt.powody.no_match }}
+            <span>— brak dopasowania do aktywności tej zmiany</span>
+          </span>
+          {% endif %}
+        </div>
+        {% endif %}
+        {% if akt.pracownicy_etat %}
+        <div class="px-3 pt-2 pb-1">
+          <div class="small text-muted fw-semibold mb-1">
+            <i class="bi bi-person me-1"></i>Etatowi ({{ akt.pracownicy_etat|length }})
+          </div>
           <div class="d-flex flex-wrap gap-1">
-            {% for prac in akt.pracownicy %}
-            <span class="badge fw-normal {% if prac.apt %}border border-warning text-dark{% else %}bg-light text-secondary border border-secondary-subtle{% endif %}"
-                  style="font-size:.78rem{% if prac.apt %};background-color:#fefce8{% endif %}"
-                  title="{{ prac.imie }} {{ prac.nazwisko }}{% if prac.apt %} · APT{% endif %}"
+            {% for prac in akt.pracownicy_etat %}
+            <span class="badge fw-normal
+                  {% if prac.nieobecny %}border border-danger text-danger
+                  {% elif prac.powod == 'capacity' %}border text-dark
+                  {% else %}bg-light text-secondary border border-secondary-subtle{% endif %}"
+                  style="font-size:.78rem{% if prac.nieobecny %};background-color:#fee2e2{% elif prac.powod == 'capacity' %};background-color:#ffedd5;border-color:#f59e0b{% endif %}"
+                  title="{{ prac.imie }} {{ prac.nazwisko }}{% if prac.sektor %} · {{ prac.sektor }}{% endif %}{% if prac.nieobecny %} · NIEOBECNY{% elif prac.powod == 'capacity' %} · Pasujące aktywności zapełnione{% elif prac.powod == 'no_match' %} · Brak dopasowania do aktywności{% endif %}"
                   data-bs-toggle="tooltip">
-              {{ prac.imie|first }}. {{ prac.nazwisko }}{% if prac.apt %} (APT){% endif %}
+              {{ prac.imie|first }}. {{ prac.nazwisko }}{% if prac.nieobecny %} (N){% endif %}{% if prac.sektor %}<span class="badge ms-1 text-white" style="font-size:.6rem;padding:.15em .35em;background-color:#6b7280">{{ prac.sektor }}</span>{% endif %}
             </span>
             {% endfor %}
           </div>
         </div>
+        {% endif %}
+        {% if akt.pracownicy_apt_list %}
+        <div class="px-3 pt-2 pb-2{% if akt.pracownicy_etat %} border-top mt-1{% endif %}">
+          <div class="small text-muted fw-semibold mb-1">
+            <i class="bi bi-people me-1"></i>APT ({{ akt.pracownicy_apt_list|length }})
+          </div>
+          <div class="d-flex flex-wrap gap-1">
+            {% for prac in akt.pracownicy_apt_list %}
+            <span class="badge fw-normal border border-warning text-dark"
+                  style="font-size:.78rem;background-color:#fefce8"
+                  title="{{ prac.imie }} {{ prac.nazwisko }}{% if prac.powod == 'capacity' %} · Pasujące aktywności zapełnione{% elif prac.powod == 'no_match' %} · Brak dopasowania do aktywności{% endif %} · APT"
+                  data-bs-toggle="tooltip">
+              {{ prac.imie|first }}. {{ prac.nazwisko }} (APT)
+            </span>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
       </div>
 
       {% else %}
@@ -198,20 +244,22 @@
           <div class="d-flex flex-wrap gap-1">
             {% for prac in akt.pracownicy %}
             <div class="d-inline-flex align-items-center gap-1 border rounded px-2 py-1
-                        {% if prac.apt %}border-warning text-dark
+                        {% if prac.nieobecny %}border-danger text-danger
+                        {% elif prac.apt %}border-warning text-dark
                         {% else %}border-primary{% endif %} prac-modal-trigger"
-                 style="font-size:.8rem;cursor:pointer{% if prac.apt %};background-color:#fefce8{% endif %}"
+                 style="font-size:.8rem;cursor:pointer{% if prac.nieobecny %};background-color:#fee2e2{% elif prac.apt %};background-color:#fefce8{% endif %}"
                  data-prac-pk="{{ prac.pk }}"
-                 title="{{ prac.imie }} {{ prac.nazwisko }}{% if prac.zmiana_grupa %} · {{ prac.zmiana_grupa }}{% endif %}{% if prac.nieobecny %} · N{% endif %}{% if prac.apt %} · APT{% endif %}">
-              <span>{{ prac.imie|first }}. {{ prac.nazwisko }}</span>
+                 title="{{ prac.imie }} {{ prac.nazwisko }}{% if prac.zmiana_grupa %} · {{ prac.zmiana_grupa }}{% endif %}{% if prac.nieobecny %} · NIEOBECNY{% endif %}{% if prac.apt %} · APT{% endif %}">
+              <span>{{ prac.imie|first }}. {{ prac.nazwisko }}{% if prac.nieobecny %} <i class="bi bi-x-circle-fill" style="font-size:.75rem"></i>{% endif %}</span>
               {% if prac.zmiana_grupa %}
               {% with zg=prac.zmiana_grupa %}
               <span class="badge ms-1
                 {% if zg|slice:':1' == 'A' %}bg-success
                 {% elif zg|slice:':1' == 'B' %}bg-primary
                 {% elif zg|slice:':1' == 'C' %}bg-danger
+                {% elif zg|slice:':1' == 'D' %}text-white
                 {% else %}bg-secondary{% endif %}"
-                    style="font-size:.68rem">{{ zg }}</span>
+                    style="font-size:.68rem{% if zg|slice:':1' == 'D' %};background-color:#7c3aed{% endif %}">{{ zg }}</span>
               {% endwith %}
               {% endif %}
               {% if prac.wynik %}

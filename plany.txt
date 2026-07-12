@@ -1,4 +1,2 @@
-Co zrobić: Porównaj przydzielenie pracowników z planu aktywnego 
-http://127.0.0.1:8000/pracownicy/plany/5/wyniki/ do wyników jakie są 
-w macierzy http://127.0.0.1:8000/pracownicy/macierz-procesowa/
+Co zrobić: Sprawdź przydział dla zmiany D
 
