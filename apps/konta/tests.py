@@ -22,24 +22,22 @@ class UsunWszystkichAccessTest(TestCase):
         self.kierownik = _make_user('kierownik_test', 'kierownik')
 
     def test_admin_moze_wywolac(self):
-        self.client.login(username='admin_test', password='testpass123')
+        self.client.force_login(self.admin)
         response = self.client.post(self.url)
-        # Redirect po usunięciu — nie 403
         self.assertNotEqual(response.status_code, 403)
 
     def test_hr_dostaje_403(self):
-        self.client.login(username='hr_test', password='testpass123')
+        self.client.force_login(self.hr)
         response = self.client.post(self.url)
         self.assertEqual(response.status_code, 403)
 
     def test_kierownik_dostaje_403(self):
-        self.client.login(username='kierownik_test', password='testpass123')
+        self.client.force_login(self.kierownik)
         response = self.client.post(self.url)
         self.assertEqual(response.status_code, 403)
 
     def test_niezalogowany_dostaje_redirect(self):
         response = self.client.post(self.url)
-        # Niezalogowany → redirect na login, nie 403
         self.assertEqual(response.status_code, 302)
         self.assertIn('/login', response['Location'])
 
@@ -57,17 +55,17 @@ class UsunPracownikaAccessTest(TestCase):
         self.kierownik = _make_user('kierownik_p', 'kierownik')
 
     def test_hr_dostaje_403(self):
-        self.client.login(username='hr_p', password='testpass123')
+        self.client.force_login(self.hr)
         response = self.client.post(self.url)
         self.assertEqual(response.status_code, 403)
 
     def test_kierownik_dostaje_403(self):
-        self.client.login(username='kierownik_p', password='testpass123')
+        self.client.force_login(self.kierownik)
         response = self.client.post(self.url)
         self.assertEqual(response.status_code, 403)
 
     def test_admin_moze_usunac(self):
-        self.client.login(username='admin_p', password='testpass123')
+        self.client.force_login(self.admin)
         response = self.client.post(self.url)
         self.assertNotEqual(response.status_code, 403)
 
@@ -85,16 +83,16 @@ class UsunPlanAccessTest(TestCase):
         self.kierownik = _make_user('kierownik_pl', 'kierownik')
 
     def test_hr_dostaje_403(self):
-        self.client.login(username='hr_pl', password='testpass123')
+        self.client.force_login(self.hr)
         response = self.client.post(self.url)
         self.assertEqual(response.status_code, 403)
 
     def test_kierownik_dostaje_403(self):
-        self.client.login(username='kierownik_pl', password='testpass123')
+        self.client.force_login(self.kierownik)
         response = self.client.post(self.url)
         self.assertEqual(response.status_code, 403)
 
     def test_admin_moze_usunac(self):
-        self.client.login(username='admin_pl', password='testpass123')
+        self.client.force_login(self.admin)
         response = self.client.post(self.url)
         self.assertNotEqual(response.status_code, 403)

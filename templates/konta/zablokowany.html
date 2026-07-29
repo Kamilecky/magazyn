@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block title %}Konto zablokowane{% endblock %}
+{% block content %}
+<div class="d-flex flex-column align-items-center justify-content-center" style="min-height: 60vh">
+  <div class="text-center">
+    <h1 class="display-1 fw-bold text-warning">429</h1>
+    <h3>Zbyt wiele nieudanych prób logowania</h3>
+    <p class="text-muted">
+      Dostęp z tego adresu IP został tymczasowo zablokowany.<br>
+      Spróbuj ponownie za 15 minut lub skontaktuj się z administratorem.
+    </p>
+    <a href="{% url 'login' %}" class="btn btn-dark mt-2">Wróć do logowania</a>
+  </div>
+</div>
+{% endblock %}

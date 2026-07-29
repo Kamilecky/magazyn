@@ -18,6 +18,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'encrypted_model_fields',
+    'axes',
     'apps.konta',
     'apps.rekruci',
     'apps.stanowiska',
@@ -37,7 +38,19 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'axes.middleware.AxesMiddleware',
 ]
+
+AUTHENTICATION_BACKENDS = [
+    'axes.backends.AxesStandaloneBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
+
+# django-axes: blokada po 5 nieudanych próbach logowania przez 15 minut
+AXES_FAILURE_LIMIT = 5
+AXES_COOLOFF_TIME = 0.25          # godziny — 0.25h = 15 minut
+AXES_RESET_ON_SUCCESS = True      # odblokuj przy pomyślnym logowaniu
+AXES_LOCKOUT_TEMPLATE = 'konta/zablokowany.html'
 
 ROOT_URLCONF = 'config.urls'
 
