@@ -1242,11 +1242,9 @@ def wyniki_przydzialu(request, pk):
         'zmiany_dane': dict(sorted(zmiany_dane.items())),
         'dzial_dept': dzial_dept,
         'litera_map': litera_map,
-        'modal_data_json': json.dumps(modal_data, ensure_ascii=False),
-        'worker_data_json': json.dumps(
-            {str(pk): v for pk, v in worker_data.items()}, ensure_ascii=False
-        ),
-        'dzial_data_json': json.dumps(dzial_modal_data, ensure_ascii=False),
+        'modal_data': modal_data,
+        'worker_data': {str(pk): v for pk, v in worker_data.items()},
+        'dzial_data': dzial_modal_data,
     })
 
 

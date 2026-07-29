@@ -308,14 +308,17 @@
 {% endblock %}
 
 {% block extra_js %}
+{{ modal_data|json_script:"modal-data-json" }}
+{{ worker_data|json_script:"worker-data-json" }}
+{{ dzial_data|json_script:"dzial-data-json" }}
 <script>
 document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
   new bootstrap.Tooltip(el);
 });
 
-const MODAL_DATA  = {{ modal_data_json|safe }};
-const WORKER_DATA = {{ worker_data_json|safe }};
-const DZIAL_DATA  = {{ dzial_data_json|safe }};
+const MODAL_DATA  = JSON.parse(document.getElementById('modal-data-json').textContent);
+const WORKER_DATA = JSON.parse(document.getElementById('worker-data-json').textContent);
+const DZIAL_DATA  = JSON.parse(document.getElementById('dzial-data-json').textContent);
 const aktModal    = new bootstrap.Modal(document.getElementById('aktModal'));
 
 /* helpers */
