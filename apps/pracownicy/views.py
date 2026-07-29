@@ -272,7 +272,7 @@ def kompetencje_pracownika(request, pk):
     })
 
 
-@login_required
+@wymaga_roli('admin')
 def usun_pracownika(request, pk):
     if request.method == 'POST':
         p = get_object_or_404(Pracownik, pk=pk)
@@ -378,7 +378,7 @@ def plany_lista(request):
     return render(request, 'pracownicy/plany_lista.html', {'plany': plany})
 
 
-@login_required
+@wymaga_roli('admin')
 def usun_plan(request, pk):
     if request.method == 'POST':
         plan = get_object_or_404(PlanDzienny, pk=pk)
