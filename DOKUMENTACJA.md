@@ -12,9 +12,10 @@
 8. [System modali — wyniki_przydzialu.html](#8-system-modali--wyniki_przydzialhtml)
 9. [Routing URL](#9-routing-url)
 10. [Konfiguracja i zmienne środowiskowe](#10-konfiguracja-i-zmienne-środowiskowe)
-11. [Uruchomienie projektu](#11-uruchomienie-projektu)
-12. [Format plików do importu](#12-format-plików-do-importu)
-13. [Znane ograniczenia](#13-znane-ograniczenia)
+11. [Bezpieczeństwo](#11-bezpieczeństwo)
+12. [Uruchomienie projektu](#12-uruchomienie-projektu)
+13. [Format plików do importu](#13-format-plików-do-importu)
+14. [Znane ograniczenia](#14-znane-ograniczenia)
 
 ---
 
@@ -46,8 +47,9 @@ Dostęp do wszystkich widoków wymaga zalogowania. Parser nie korzysta z AI — 
 | Szyfrowanie pól | django-encrypted-model-fields 0.6.5 + cryptography |
 | Zmienne środowiskowe | django-environ 0.11.2 |
 | Serwowanie plików statycznych | WhiteNoise 6.8.2 |
+| Rate limiting logowania | django-axes 8.3.1 |
 
-> **Uwaga:** OpenAI API zostało usunięte w wersji 2.0 (2026-07-04). Import pracowników i planów nie wymaga klucza API ani połączenia z siecią.
+> **Uwaga:** OpenAI API zostało usunięte w wersji 2.0 (2026-07-04). Pakiety `openai` i `httpx` usunięte z `requirements.txt` w v2.4.
 
 ---
 
@@ -57,16 +59,22 @@ Dostęp do wszystkich widoków wymaga zalogowania. Parser nie korzysta z AI — 
 magazyn/
 ├── apps/
 │   ├── konta/              # Uwierzytelnianie i role użytkowników
+│   │   ├── decorators.py   # Decoratory dostępu: wymaga_roli, tylko_hr, tylko_kierownik
+│   │   ├── models.py       # Model Profil (rola użytkownika)
+│   │   └── tests.py        # Testy kontroli dostępu
 │   ├── pracownicy/         # Główny moduł: pracownicy, import, plany, przydział
 │   │   ├── parsers/        # Deterministyczne parsery Excel
 │   │   │   ├── plan_dzienny.py       # Parser Plan_dzienny_NEW.xlsx
 │   │   │   ├── kompetencje.py        # Parser KOMPETENCJE_PRACOWNIKÓW_ACT_NEW.xlsx
 │   │   │   ├── struktura.py          # Parser Struktura___Grafik___Absencje_NEW.xlsx
 │   │   │   └── pracownicy_apt.py     # Parser PracownicyAPT*.xlsx
+│   │   ├── management/commands/
+│   │   │   └── cleanup_tmp_imports.py  # Kasuje tmp/*.json starsze niż N godzin
 │   │   ├── templatetags/
 │   │   │   └── pracownicy_extras.py  # Filtr get_item dla słowników w szablonach
 │   │   ├── migrations/
 │   │   ├── models.py
+│   │   ├── validators.py             # waliduj_plik_importu() — rozszerzenie + rozmiar
 │   │   ├── views.py                  # Lista, plany, przydział, import
 │   │   ├── urls.py                   # /pracownicy/ — namespace: pracownicy
 │   │   └── urls_import.py            # /import/ — namespace: import_danych
@@ -93,8 +101,11 @@ magazyn/
 │   ├── przydzialy/
 │   ├── raporty/
 │   └── konta/
-├── tmp/                    # Pliki tymczasowe podglądu importu (UUID.json)
+│       ├── brak_dostepu.html         # Strona 403
+│       └── zablokowany.html          # Strona blokady axes (429)
+├── tmp/                    # Pliki tymczasowe podglądu importu (UUID.json) — nieserwowalny
 ├── .env
+├── .env.example            # Szablon zmiennych środowiskowych (bez wartości)
 ├── requirements.txt
 ├── manage.py
 └── db.sqlite3
@@ -667,7 +678,19 @@ Tryby (`?tryb=`):
 | `.dzial-modal-trigger` | `data-dzial-nazwa` | Wszystkie grupy procesowe działu |
 | `.prac-modal-trigger` | `data-prac-pk` | Top 4 kompetencje + ranking grup procesowych |
 
-Dane JSON osadzone w szablonie: `MODAL_DATA`, `WORKER_DATA`, `DZIAL_DATA` (via `|safe`).
+Dane JSON osadzone w szablonie przez filtr `json_script` (bezpieczny — escapeuje `<`, `>`, `&`):
+
+```html
+{{ modal_data|json_script:"modal-data-json" }}
+```
+
+W JS czytane przez:
+
+```js
+const MODAL_DATA = JSON.parse(document.getElementById('modal-data-json').textContent);
+```
+
+Widok przekazuje surowe struktury Pythona (`modal_data`, `worker_data`, `dzial_data`) — nie JSON string. Nie używaj `|safe` dla tych danych.
 
 **APT workers** wyświetlani z `background-color:#fefce8` (inline). Bootstrap `bg-warning-subtle` nie jest używany — w trybie ciemnym renderuje jako ciemnobrązowy.
 
@@ -679,36 +702,38 @@ Dane JSON osadzone w szablonie: `MODAL_DATA`, `WORKER_DATA`, `DZIAL_DATA` (via `
 /                                               → redirect do /konta/dashboard/
 /admin/                                         → panel administracyjny Django
 
-/konta/login/                                   → logowanie
+/konta/login/                                   → logowanie (rate-limited: axes)
 /konta/logout/                                  → wylogowanie
 /konta/dashboard/                               → przekierowanie po roli
 
-/pracownicy/                                    → lista pracowników
-/pracownicy/<pk>/usun/                          → usuń pracownika (POST)
-/pracownicy/usun-wszystkich/                    → usuń wszystkich (POST)
-/pracownicy/<pk>/kompetencje/                   → kompetencje pracownika (JSON, AJAX)
-/pracownicy/apt/                                → lista pracowników APT
-/pracownicy/plany/                              → lista planów dziennych
-/pracownicy/plany/<pk>/usun/                    → usuń plan (POST)
-/pracownicy/plany/<pk>/przydziel/               → uruchom przydział (POST)
-/pracownicy/plany/<pk>/wyniki/                  → wyniki przydziału (GET)
-/pracownicy/macierz-procesowa/                  → macierz procesowa
+/pracownicy/                                    → lista pracowników             [login]
+/pracownicy/<pk>/usun/                          → usuń pracownika (POST)        [admin]
+/pracownicy/usun-wszystkich/                    → usuń wszystkich (POST)        [admin]
+/pracownicy/<pk>/kompetencje/                   → kompetencje pracownika (AJAX) [login]
+/pracownicy/apt/                                → lista pracowników APT         [login]
+/pracownicy/plany/                              → lista planów dziennych        [login]
+/pracownicy/plany/<pk>/usun/                    → usuń plan (POST)              [admin]
+/pracownicy/plany/<pk>/przydziel/               → uruchom przydział (POST)      [login]
+/pracownicy/plany/<pk>/wyniki/                  → wyniki przydziału (GET)       [login]
+/pracownicy/macierz-procesowa/                  → macierz procesowa             [login]
 
-/import/plan-zmianowy/                          → import planu zmianowego
-/import/pracownicy/                             → import pracowników
-/import/pracownicy-apt/                         → import pracowników APT
+/import/plan-zmianowy/                          → import planu zmianowego       [login]
+/import/pracownicy/                             → import pracowników            [login]
+/import/pracownicy-apt/                         → import pracowników APT        [login]
 
-/stanowiska/                                    → lista stanowisk
-/stanowiska/<pk>/                               → podgląd stanowiska
-/stanowiska/dodaj/                              → dodaj stanowisko
-/stanowiska/<pk>/edytuj/                        → edytuj stanowisko
-/stanowiska/<pk>/usun/                          → usuń stanowisko (POST)
+/stanowiska/                                    → lista stanowisk               [login]
+/stanowiska/<pk>/                               → podgląd stanowiska            [login]
+/stanowiska/dodaj/                              → dodaj stanowisko              [login]
+/stanowiska/<pk>/edytuj/                        → edytuj stanowisko             [login]
+/stanowiska/<pk>/usun/                          → usuń stanowisko (POST)        [login]
 
-/przydzialy/                                    → dashboard obsady (legacy)
-/przydzialy/historia/                           → historia przydziałów (legacy)
+/przydzialy/                                    → dashboard obsady (legacy)     [login]
+/przydzialy/historia/                           → historia przydziałów (legacy) [login]
 
-/raporty/obsada/excel/                          → raport Excel
+/raporty/obsada/excel/                          → raport Excel                  [login]
 ```
+
+Legenda: `[login]` = wymaga zalogowania, `[admin]` = wymaga roli `admin` (403 dla innych ról).
 
 **Namespace `pracownicy`** — URL-e `/pracownicy/*`
 **Namespace `import_danych`** — URL-e `/import/*`
@@ -717,26 +742,122 @@ Dane JSON osadzone w szablonie: `MODAL_DATA`, `WORKER_DATA`, `DZIAL_DATA` (via `
 
 ## 10. Konfiguracja i zmienne środowiskowe
 
-Plik `.env` w katalogu głównym:
+Wszystkie zmienne czytane są wyłącznie przez `django-environ` (`env(...)`). Brak hardkodowanych fallbacków dla wartości wrażliwych. Szablon w `.env.example`.
 
-```env
-DEBUG=True
-SECRET_KEY=<losowy-klucz-django>
-DATABASE_URL=sqlite:///db.sqlite3
-ALLOWED_HOSTS=localhost,127.0.0.1
-FIELD_ENCRYPTION_KEY=<klucz-fernet-base64>
+| Zmienna | Wymagana | Opis |
+|---|---|---|
+| `SECRET_KEY` | Tak | Klucz Django (min. 50 znaków, losowy) |
+| `DEBUG` | Tak | `True` (dev) / `False` (prod) |
+| `ALLOWED_HOSTS` | Tak | Lista hostów oddzielona przecinkami |
+| `DATABASE_URL` | Tak | URL bazy: `sqlite:///db.sqlite3` lub `postgres://user:pass@host/db` |
+| `FIELD_ENCRYPTION_KEY` | Tak | Klucz Fernet (base64) dla `django-encrypted-model-fields` |
+| `MAX_IMPORT_FILE_SIZE_MB` | Nie | Limit rozmiaru pliku importu Excel (domyślnie `10`) |
+
+**Ustawienia produkcyjne** (aktywne tylko gdy `DEBUG=False`):
+
+```python
+SECURE_SSL_REDIRECT = True
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+SECURE_HSTS_SECONDS = 31536000      # 1 rok
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = 'DENY'
+```
+
+> **Uwaga HSTS:** Po pierwszym wdrożeniu z `HSTS_PRELOAD = True` domena jest blokowana w przeglądarkach na 1 rok. Upewnij się, że SSL działa poprawnie przed wdrożeniem.
+
+---
+
+## 11. Bezpieczeństwo
+
+### 11.1 Kontrola dostępu per-rola
+
+`apps/konta/decorators.py` dostarcza decoratory dla function-based views:
+
+| Decorator | Dozwolone role |
+|---|---|
+| `@wymaga_roli('admin')` | tylko `admin` |
+| `@wymaga_roli('admin', 'hr')` | `admin` lub `hr` (dowolna kombinacja) |
+| `@tylko_hr` | `hr`, `admin` |
+| `@tylko_kierownik` | `kierownik`, `admin` |
+| `@hr_lub_kierownik` | wszystkie trzy role |
+
+**Zachowanie:** niezalogowany → redirect na `/konta/login/`; zalogowany z złą rolą → HTTP 403 (strona `konta/brak_dostepu.html`), nie redirect.
+
+**Widoki wymagające roli `admin`:** `usun_pracownika`, `usun_wszystkich`, `usun_plan`.
+
+Testy kontroli dostępu: `apps/konta/tests.py` — 10 przypadków pokrywających admin/hr/kierownik/anonimowy dla każdego z trzech widoków destrukcyjnych.
+
+---
+
+### 11.2 Rate limiting logowania — django-axes
+
+Konfiguracja w `settings.py`:
+
+```python
+AXES_FAILURE_LIMIT = 5          # blokada po 5 nieudanych próbach
+AXES_COOLOFF_TIME = 0.25        # 15 minut (wartość w godzinach)
+AXES_RESET_ON_SUCCESS = True    # odblokuj przy pomyślnym logowaniu
+AXES_LOCKOUT_TEMPLATE = 'konta/zablokowany.html'
+```
+
+Zablokowany IP/user widzi stronę `konta/zablokowany.html`. Odblokowanie ręczne: `python manage.py axes_reset` lub przez panel admina (`Axes > Access Attempts`).
+
+Middleware `axes.middleware.AxesMiddleware` musi być ostatnim w `MIDDLEWARE`. Backend `axes.backends.AxesStandaloneBackend` musi być **pierwszy** w `AUTHENTICATION_BACKENDS`.
+
+---
+
+### 11.3 XSS — osadzanie JSON w szablonach
+
+Dane modali (`modal_data`, `worker_data`, `dzial_data`) przekazywane jako surowe struktury Pythona i osadzane przez filtr `json_script` (Django autoescapuje `<`, `>`, `&`). Nie używaj `|safe` dla tych danych.
+
+---
+
+### 11.4 Walidacja plików importu
+
+`apps/pracownicy/validators.py` — funkcja `waliduj_plik_importu(plik)`:
+
+- Rozszerzenie musi być `.xlsx` (case-insensitive)
+- Rozmiar ≤ `MAX_IMPORT_FILE_SIZE_MB` MB (domyślnie 10)
+- Rzuca `django.core.exceptions.ValidationError` z czytelnym komunikatem
+- Stosowana we wszystkich trzech widokach importu
+
+---
+
+### 11.5 Katalog `tmp/`
+
+`tmp/*.json` przechowuje tymczasowe dane podglądu importu (krok upload→podgląd→zatwierdź). Katalog:
+
+- **Nie jest** w `STATICFILES_DIRS` ani serwowany żadnym URL-em
+- Nie jest dostępny publicznie przez WhiteNoise
+- Pliki kasowane po zatwierdzeniu (`tmp_path.unlink(missing_ok=True)`)
+
+**Management command czyszczący stare pliki:**
+
+```bash
+python manage.py cleanup_tmp_imports            # kasuje pliki starsze niż 24h
+python manage.py cleanup_tmp_imports --hours 48 # kasuje starsze niż 48h
+python manage.py cleanup_tmp_imports --dry-run  # podgląd bez kasowania
+```
+
+Rekomendowany cron (codziennie o 3:00):
+
+```
+0 3 * * * /sciezka/do/venv/bin/python /sciezka/do/magazyn/manage.py cleanup_tmp_imports
 ```
 
 ---
 
-## 11. Uruchomienie projektu
+## 12. Uruchomienie projektu (dev)
 
 ```bash
 # Aktywacja venv (Windows, PowerShell)
 .venv\Scripts\Activate.ps1
 
 pip install -r requirements.txt
-python manage.py migrate
+python manage.py migrate          # w tym migracje axes (axes.0001–0010)
 python manage.py createsuperuser
 python manage.py runserver
 ```
@@ -745,9 +866,9 @@ Aplikacja: `http://127.0.0.1:8000/`
 
 ---
 
-## 12. Format plików do importu
+## 13. Format plików do importu
 
-### 12.1 Plan dzienny — `Plan_dzienny_NEW.xlsx`
+### 13.1 Plan dzienny — `Plan_dzienny_NEW.xlsx`
 
 | Kolumna | Indeks (0-based) | Zawartość |
 |---|---|---|
@@ -760,7 +881,7 @@ Aplikacja: `http://127.0.0.1:8000/`
 
 ---
 
-### 12.2 Macierz kompetencji — `KOMPETENCJE_PRACOWNIKÓW_ACT_NEW.xlsx`
+### 13.2 Macierz kompetencji — `KOMPETENCJE_PRACOWNIKÓW_ACT_NEW.xlsx`
 
 - Kolumna 0: `departament` (np. `FF`, `IN`, `OB.`, `APT 1`)
 - Kolumna 11: `zmiana_grupa`
@@ -769,7 +890,7 @@ Aplikacja: `http://127.0.0.1:8000/`
 
 ---
 
-### 12.3 Struktura i absencje — `Struktura___Grafik___Absencje_NEW.xlsx`
+### 13.3 Struktura i absencje — `Struktura___Grafik___Absencje_NEW.xlsx`
 
 - Arkusze: `Struktura IB`, `Struktura OB`, `Struktura FF`, `Struktura PR`, `Struktura ZW`
 - Wiersz 6 = nagłówki, wiersz 7+ = dane pracowników
@@ -778,13 +899,13 @@ Aplikacja: `http://127.0.0.1:8000/`
 
 ---
 
-### 12.4 Pracownicy APT — `PracownicyAPT*.xlsx`
+### 13.4 Pracownicy APT — `PracownicyAPT*.xlsx`
 
 Arkusz `PracownicyAPT01`. Kolumny 2,3,4,5,6,8,9,10,13–18 → oceny dla kolumn APT 1–14.
 
 ---
 
-## 13. Znane ograniczenia
+## 14. Znane ograniczenia
 
 | Kwestia | Status |
 |---|---|
@@ -796,4 +917,4 @@ Arkusz `PracownicyAPT01`. Kolumny 2,3,4,5,6,8,9,10,13–18 → oceny dla kolumn 
 
 ---
 
-*Dokumentacja zaktualizowana: 2026-07-14 | System Magazynowy v2.3*
+*Dokumentacja zaktualizowana: 2026-07-29 | System Magazynowy v2.4*
