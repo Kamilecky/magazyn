@@ -225,6 +225,9 @@
       <button class="sidebar-link w-100 border-0 text-start" style="background:none" data-bs-toggle="offcanvas" data-bs-target="#offcanvasNotatki" data-label="Notatki">
         <i class="bi bi-journal-text"></i><span>Notatki</span>
       </button>
+      <button class="sidebar-link w-100 border-0 text-start" style="background:none" data-bs-toggle="offcanvas" data-bs-target="#offcanvasZabezpieczenia" data-label="Zabezpieczenia">
+        <i class="bi bi-shield-fill-check text-success"></i><span>Zabezpieczenia</span>
+      </button>
     </div>
   </nav>
   {% endif %}
@@ -414,6 +417,112 @@
         <div class="spinner-border spinner-border-sm text-secondary" role="status"></div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ===== OFFCANVAS: Zabezpieczenia ===== -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="offcanvasZabezpieczenia" style="width:min(620px,96vw)">
+  <div class="offcanvas-header border-bottom" style="background:#1a1d23; color:#c9d1d9">
+    <h5 class="offcanvas-title"><i class="bi bi-shield-fill-check me-2 text-success"></i>Zabezpieczenia systemu</h5>
+    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas"></button>
+  </div>
+  <div class="offcanvas-body" style="font-size:.9rem; overflow-y:auto">
+
+    <p class="text-muted small mb-4">Przegląd wdrożonych mechanizmów bezpieczeństwa (wersja 2.4, 2026-07-29).</p>
+
+    <!-- 1. Konfiguracja produkcyjna -->
+    <div class="d-flex gap-3 mb-4">
+      <div class="flex-shrink-0 pt-1"><span class="badge bg-success fs-6 px-2"><i class="bi bi-check-lg"></i></span></div>
+      <div>
+        <h6 class="mb-1">Konfiguracja produkcyjna</h6>
+        <ul class="mb-0 small text-muted ps-3">
+          <li><code>SECRET_KEY</code>, <code>DATABASE_URL</code>, <code>ALLOWED_HOSTS</code> — wyłącznie ze zmiennych środowiskowych (bez hardkodowanych wartości)</li>
+          <li>HTTPS wymuszony (<code>SECURE_SSL_REDIRECT</code>), ciasteczka sesji i CSRF tylko przez SSL</li>
+          <li>HSTS: 1 rok, subdomeny, preload</li>
+          <li><code>X-Frame-Options: DENY</code> (ochrona przed clickjackingiem)</li>
+          <li><code>SECURE_CONTENT_TYPE_NOSNIFF</code> — zapobiega MIME-sniffingowi</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 2. Kontrola dostępu -->
+    <div class="d-flex gap-3 mb-4">
+      <div class="flex-shrink-0 pt-1"><span class="badge bg-success fs-6 px-2"><i class="bi bi-check-lg"></i></span></div>
+      <div>
+        <h6 class="mb-1">Kontrola dostępu wg roli</h6>
+        <ul class="mb-0 small text-muted ps-3">
+          <li>Dekorator <code>@wymaga_roli('admin')</code> — usunięcie pracownika, usunięcie planu, usunięcie wszystkich</li>
+          <li>Nieautoryzowany → przekierowanie na login; zły poziom uprawnień → HTTP 403</li>
+          <li>10 automatycznych testów dostępu (HR i Kierownik nie mogą wykonać akcji admina)</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 3. XSS -->
+    <div class="d-flex gap-3 mb-4">
+      <div class="flex-shrink-0 pt-1"><span class="badge bg-success fs-6 px-2"><i class="bi bi-check-lg"></i></span></div>
+      <div>
+        <h6 class="mb-1">Ochrona przed XSS w szablonach</h6>
+        <ul class="mb-0 small text-muted ps-3">
+          <li>Dane JSON przekazywane przez <code>&#123;&#123; zmienna|json_script:"id" &#125;&#125;</code> zamiast <code>|safe</code></li>
+          <li>Filtr <code>json_script</code> automatycznie escapuje <code>&lt; &gt; &amp;</code> — uniemożliwia wstrzyknięcie skryptu</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 4. Walidacja plików -->
+    <div class="d-flex gap-3 mb-4">
+      <div class="flex-shrink-0 pt-1"><span class="badge bg-success fs-6 px-2"><i class="bi bi-check-lg"></i></span></div>
+      <div>
+        <h6 class="mb-1">Walidacja plików importu</h6>
+        <ul class="mb-0 small text-muted ps-3">
+          <li>Akceptowane wyłącznie pliki <code>.xlsx</code></li>
+          <li>Limit rozmiaru konfigurowalny przez <code>MAX_IMPORT_FILE_SIZE_MB</code> (domyślnie 10 MB)</li>
+          <li>Walidacja w 3 widokach importu przed przetworzeniem</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 5. Rate limiting -->
+    <div class="d-flex gap-3 mb-4">
+      <div class="flex-shrink-0 pt-1"><span class="badge bg-success fs-6 px-2"><i class="bi bi-check-lg"></i></span></div>
+      <div>
+        <h6 class="mb-1">Ograniczanie prób logowania (django-axes)</h6>
+        <ul class="mb-0 small text-muted ps-3">
+          <li>Blokada IP po <strong>5 nieudanych próbach</strong> przez <strong>15 minut</strong></li>
+          <li>Automatyczne odblokowanie po pomyślnym logowaniu</li>
+          <li>Strona lockout: <code>konta/zablokowany.html</code> (HTTP 429)</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 6. Panel admina -->
+    <div class="d-flex gap-3 mb-4">
+      <div class="flex-shrink-0 pt-1"><span class="badge bg-success fs-6 px-2"><i class="bi bi-check-lg"></i></span></div>
+      <div>
+        <h6 class="mb-1">Panel administracyjny</h6>
+        <ul class="mb-0 small text-muted ps-3">
+          <li>Link w sidebarze widoczny wyłącznie dla roli <strong>admin</strong></li>
+          <li>Domyślna ścieżka <code>/admin/</code> aktywna (zmiana możliwa przez <code>ADMIN_URL</code> w <code>.env</code>)</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 7. Porządkowanie plików tymczasowych -->
+    <div class="d-flex gap-3 mb-4">
+      <div class="flex-shrink-0 pt-1"><span class="badge bg-success fs-6 px-2"><i class="bi bi-check-lg"></i></span></div>
+      <div>
+        <h6 class="mb-1">Porządkowanie plików tymczasowych</h6>
+        <ul class="mb-0 small text-muted ps-3">
+          <li>Komenda <code>python manage.py cleanup_tmp_imports</code> usuwa pliki <code>tmp/*.json</code> starsze niż N godzin</li>
+          <li>Opcje: <code>--hours</code> (domyślnie 24), <code>--dry-run</code></li>
+          <li><code>.env.example</code> dokumentuje wymagane zmienne środowiskowe</li>
+        </ul>
+      </div>
+    </div>
+
+    <hr>
+    <p class="text-muted small text-end mb-0">System Magazynowy v2.4 | branch: security-hardening</p>
   </div>
 </div>
 
