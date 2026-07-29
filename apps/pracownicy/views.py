@@ -7,6 +7,8 @@ from pathlib import Path
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+
+from apps.konta.decorators import wymaga_roli
 from django.core.paginator import Paginator
 from django.db.models import Avg, Count, Exists, F, OuterRef, Prefetch, Q
 from django.db.models.functions import Length
@@ -279,7 +281,7 @@ def usun_pracownika(request, pk):
     return redirect('pracownicy:lista')
 
 
-@login_required
+@wymaga_roli('admin')
 def usun_wszystkich(request):
     if request.method == 'POST':
         ile = Pracownik.objects.count()
