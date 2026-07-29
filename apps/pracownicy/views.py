@@ -9,6 +9,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 
 from apps.konta.decorators import wymaga_roli
+from .validators import waliduj_plik_importu
 from django.core.paginator import Paginator
 from django.db.models import Avg, Count, Exists, F, OuterRef, Prefetch, Q
 from django.db.models.functions import Length
@@ -1327,8 +1328,11 @@ def import_plan_zmianowy(request):
             'plany_count': plany_count,
         })
 
-    if not plik.name.lower().endswith('.xlsx'):
-        messages.error(request, 'Wymagany format: .xlsx')
+    from django.core.exceptions import ValidationError as _VE
+    try:
+        waliduj_plik_importu(plik)
+    except _VE as exc:
+        messages.error(request, exc.message)
         return render(request, 'pracownicy/import_plan_zmianowy.html', {
             'plany_count': plany_count,
         })
@@ -1483,9 +1487,12 @@ def import_pracownicy(request):
     absencje_list: list[dict] = []
     ostrzezenia: list[str] = []
 
+    from django.core.exceptions import ValidationError as _VE
     if plik_kompetencje:
-        if not plik_kompetencje.name.lower().endswith('.xlsx'):
-            messages.error(request, 'Plik kompetencji musi być .xlsx')
+        try:
+            waliduj_plik_importu(plik_kompetencje)
+        except _VE as exc:
+            messages.error(request, exc.message)
             return render(request, 'pracownicy/import_pracownicy.html', {
                 'pracownicy_count': pracownicy_count,
             })
@@ -1506,8 +1513,10 @@ def import_pracownicy(request):
             })
 
     if plik_struktura:
-        if not plik_struktura.name.lower().endswith('.xlsx'):
-            messages.error(request, 'Plik struktury musi być .xlsx')
+        try:
+            waliduj_plik_importu(plik_struktura)
+        except _VE as exc:
+            messages.error(request, exc.message)
             return render(request, 'pracownicy/import_pracownicy.html', {
                 'pracownicy_count': pracownicy_count,
             })
@@ -1729,8 +1738,11 @@ def import_pracownicy_apt(request):
         messages.error(request, 'Nie wybrano pliku.')
         return render(request, 'pracownicy/import_pracownicy_apt.html', base_ctx)
 
-    if not plik.name.lower().endswith('.xlsx'):
-        messages.error(request, 'Wymagany format: .xlsx')
+    from django.core.exceptions import ValidationError as _VE
+    try:
+        waliduj_plik_importu(plik)
+    except _VE as exc:
+        messages.error(request, exc.message)
         return render(request, 'pracownicy/import_pracownicy_apt.html', base_ctx)
 
     try:
