@@ -51,16 +51,31 @@
         <input type="hidden" name="arkusz" value="{{ arkusz_q }}">
         {% endif %}
       </div>
-      <div class="col-md-3">
-        <div class="form-check form-switch pt-1">
-          <input class="form-check-input" type="checkbox" name="nieobecni" id="filtrNieobecni"
-                 value="1" {% if nieobecni %}checked{% endif %}>
-          <label class="form-check-label small" for="filtrNieobecni">Tylko z absencjami</label>
+      <div class="col-md-4">
+        <div class="d-flex flex-wrap gap-3 pt-1 align-items-center">
+          <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" name="nieobecni" id="filtrNieobecni"
+                   value="1" {% if nieobecni %}checked{% endif %}>
+            <label class="form-check-label small" for="filtrNieobecni">Tylko z absencjami</label>
+          </div>
+          <div class="d-flex gap-2 align-items-center">
+            <span class="text-muted small">Typ:</span>
+            <div class="form-check mb-0">
+              <input class="form-check-input" type="checkbox" name="show_etat" id="filtrEtat"
+                     value="1" {% if show_etat %}checked{% endif %}>
+              <label class="form-check-label small" for="filtrEtat">Etat</label>
+            </div>
+            <div class="form-check mb-0">
+              <input class="form-check-input" type="checkbox" name="show_apt" id="filtrAPT"
+                     value="1" {% if show_apt %}checked{% endif %}>
+              <label class="form-check-label small" for="filtrAPT">APT</label>
+            </div>
+          </div>
         </div>
       </div>
-      <div class="col-md-4 text-end">
+      <div class="col-md-3 text-end">
         <span class="text-muted small fw-bold">{{ pracownicy.paginator.count }} pracowników</span>
-        {% if q or arkusz_q or nieobecni or has_col_filters %}
+        {% if q or arkusz_q or nieobecni or show_etat or show_apt or has_col_filters %}
         <a href="{% url 'pracownicy:lista' %}" class="btn btn-outline-secondary btn-sm ms-2 py-0 px-2">
           <i class="bi bi-x"></i> Wyczyść filtr
         </a>
@@ -79,6 +94,7 @@
         <th class="ps-2" style="width:42px">Nr ewid.</th>
         <th>Nazwisko</th>
         <th>Imię</th>
+        <th>Przynależność</th>
         <th>Data zatr.</th>
         <th>Stanowisko</th>
         <th>Strefa</th>
@@ -94,6 +110,7 @@
         <th><input class="col-filter" name="f_nr"         value="{{ f_nr }}"         placeholder="…" autocomplete="off"></th>
         <th><input class="col-filter" name="f_nazwisko"   value="{{ f_nazwisko }}"   placeholder="…" autocomplete="off"></th>
         <th><input class="col-filter" name="f_imie"       value="{{ f_imie }}"       placeholder="…" autocomplete="off"></th>
+        <th></th>
         <th></th>
         <th><input class="col-filter" name="f_stanowisko" value="{{ f_stanowisko }}" placeholder="…" autocomplete="off"></th>
         <th><input class="col-filter" name="f_strefa"     value="{{ f_strefa }}"     placeholder="…" autocomplete="off"></th>
@@ -112,6 +129,13 @@
         <td class="text-muted ps-2">{{ p.nr_ewidencyjny|default:"—" }}</td>
         <td class="fw-semibold">{{ p.nazwisko }}</td>
         <td>{{ p.imie }}</td>
+        <td>
+          {% if p.departament|slice:":3"|upper == "APT" %}
+          <span class="badge fw-normal" style="font-size:.72rem;background-color:#fef9c3;color:#92400e;border:1px solid #fbbf24">APT</span>
+          {% else %}
+          <span class="badge fw-normal" style="font-size:.72rem;background-color:#dcfce7;color:#166534;border:1px solid #86efac">Etat</span>
+          {% endif %}
+        </td>
         <td class="text-nowrap text-muted">
           {{ p.data_zatrudnienia|date:"d.m.Y"|default:"—" }}
         </td>
@@ -394,6 +418,8 @@
     const ark = document.querySelector('#formFiltr [name="arkusz"]')?.value.trim();
     if (ark) p.set('arkusz', ark);
     if (document.getElementById('filtrNieobecni')?.checked) p.set('nieobecni', '1');
+    if (document.getElementById('filtrEtat')?.checked) p.set('show_etat', '1');
+    if (document.getElementById('filtrAPT')?.checked) p.set('show_apt', '1');
     document.querySelectorAll('.col-filter').forEach(inp => {
       const v = inp.value.trim();
       if (v) p.set(inp.name, v);
@@ -421,6 +447,8 @@
 
   document.getElementById('szukaj')?.addEventListener('input', debounced);
   document.getElementById('filtrNieobecni')?.addEventListener('change', window.navigateWithFilters);
+  document.getElementById('filtrEtat')?.addEventListener('change', window.navigateWithFilters);
+  document.getElementById('filtrAPT')?.addEventListener('change', window.navigateWithFilters);
   document.querySelectorAll('.col-filter').forEach(inp => inp.addEventListener('input', debounced));
 
   const form = document.getElementById('formFiltr');

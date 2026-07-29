@@ -135,6 +135,8 @@ def lista(request):
     q         = request.GET.get('q', '').strip()
     arkusz_q  = request.GET.get('arkusz', '').strip()
     nieobecni = request.GET.get('nieobecni', '') == '1'
+    show_etat = request.GET.get('show_etat', '') == '1'
+    show_apt  = request.GET.get('show_apt',  '') == '1'
 
     f_nr         = request.GET.get('f_nr', '').strip()
     f_nazwisko   = request.GET.get('f_nazwisko', '').strip()
@@ -186,6 +188,12 @@ def lista(request):
     if f_zmiana_gr:  qs = qs.filter(zmiana_grupa__icontains=f_zmiana_gr)
     if f_przelozony: qs = qs.filter(przelozony__icontains=f_przelozony)
 
+    # Filtr przynależności (zaznaczony tylko jeden checkbox → filtruj)
+    if show_etat and not show_apt:
+        qs = qs.exclude(departament__iregex=r'^APT')
+    elif show_apt and not show_etat:
+        qs = qs.filter(departament__iregex=r'^APT')
+
     # Zakładki arkuszy z liczbą pracowników
     base_qs = Pracownik.objects
     if q:
@@ -218,6 +226,7 @@ def lista(request):
     }
     _fp = {k: v for k, v in [
         ('q', q), ('arkusz', arkusz_q), ('nieobecni', '1' if nieobecni else ''),
+        ('show_etat', '1' if show_etat else ''), ('show_apt', '1' if show_apt else ''),
         *col_filters.items(),
     ] if v}
     filter_params = urlencode(_fp)
@@ -230,6 +239,8 @@ def lista(request):
         'q': q,
         'arkusz_q': arkusz_q,
         'nieobecni': nieobecni,
+        'show_etat': show_etat,
+        'show_apt': show_apt,
         'filter_params': filter_params,
         'arkusze_tabs': arkusze_tabs,
         'page_range': pr,
@@ -462,8 +473,11 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
     akt_pks_in_plan = {k[0] for k in plan_godziny}
     akt_cache = {a.pk: a for a in Aktywnosc.objects.filter(pk__in=akt_pks_in_plan)}
 
-    # 2. Pracownicy Struktura
-    pracownicy = list(Pracownik.objects.all())
+    # 2. Pracownicy Struktura — wyłącz pracowników z departamentem APT* (to agencyjni)
+    pracownicy = [
+        p for p in Pracownik.objects.all()
+        if not p.departament.strip().upper().startswith('APT')
+    ]
     pk_to_p = {p.pk: p for p in pracownicy}
 
     # Zbiór PK pracowników nieobecnych w dniu planu
@@ -630,7 +644,7 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
             unassigned_priority.discard(wpk)
             unassigned_others.discard(wpk)
 
-        # --- Faza 2: uzupełnienie pozostałej pojemności wg standardowego dopasowania ---
+        # --- Faza 2: uzupełnienie pozostałej pojemności wg standardowego dopasowania (tylko etatowi) ---
         for akt_pk, capacity, godziny in shift_acts:
             akt = akt_cache[akt_pk]
             assigned = akt_assignments[akt_pk]
@@ -659,7 +673,9 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
                     unassigned_priority.discard(pk)
                     unassigned_others.discard(pk)
 
-            # APT: sortuj wg oceny dla tej aktywności malejąco
+        # --- Faza 3: APT wypełnia pozostałą pojemność po wszystkich etatowych ---
+        for akt_pk, capacity, _ in shift_acts:
+            assigned = akt_assignments[akt_pk]
             apt_by_score = sorted(unassigned_apt,
                                   key=lambda pk: -comp_apt.get((pk, akt_pk), 0.0))
             for apt_pk2 in apt_by_score[:capacity - len(assigned)]:
@@ -838,7 +854,7 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
             })
             d_unassigned.discard(wpk)
 
-        # Faza 2 D: uzupełnienie wg standardowego dopasowania
+        # Faza 2 D: uzupełnienie etatowi
         for apk, cap, _ in d_shift_acts:
             akt = akt_cache[apk]
             assigned = d_akt_assignments[apk]
@@ -862,7 +878,9 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
                     })
                     d_unassigned.discard(pk)
 
-            # Faza 3 D: APT
+        # Faza 3 D: APT wypełnia pozostałą pojemność po wszystkich etatowych
+        for apk, cap, _ in d_shift_acts:
+            assigned = d_akt_assignments[apk]
             apt_sorted = sorted(d_unassigned_apt, key=lambda pk: -comp_apt.get((pk, apk), 0.0))
             for apt_pk2 in apt_sorted[:cap - len(assigned)]:
                 obj = apt_pk_to_p[apt_pk2]

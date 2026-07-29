@@ -1,329 +1,277 @@
-# System Magazynowy — Instrukcja obsługi
+# System Magazynowy — Instrukcja Obsługi
 
 ## Spis treści
 
-1. [Logowanie i wylogowanie](#1-logowanie-i-wylogowanie)
-2. [Nawigacja po systemie](#2-nawigacja-po-systemie)
-3. [Lista pracowników](#3-lista-pracowników)
+1. [Pierwsze logowanie](#1-pierwsze-logowanie)
+2. [Nawigacja](#2-nawigacja)
+3. [Lista pracowników etatowych](#3-lista-pracowników-etatowych)
 4. [Lista pracowników APT](#4-lista-pracowników-apt)
-5. [Plany dzienne](#5-plany-dzienne)
-6. [Przydział pracowników do planu](#6-przydział-pracowników-do-planu)
+5. [Import danych](#5-import-danych)
+6. [Plany dzienne i przydział](#6-plany-dzienne-i-przydział)
 7. [Wyniki przydziału](#7-wyniki-przydziału)
-8. [Macierz procesowa](#8-macierz-procesowa)
-9. [Import danych](#9-import-danych)
-   - [Import planu zmianowego](#91-import-planu-zmianowego)
-   - [Import pracowników](#92-import-pracowników)
-   - [Import pracowników APT](#93-import-pracowników-apt)
-10. [Stanowiska](#10-stanowiska)
+8. [Stanowiska](#8-stanowiska)
+9. [Raporty](#9-raporty)
+10. [Typowe problemy](#10-typowe-problemy)
 
 ---
 
-## 1. Logowanie i wylogowanie
+## 1. Pierwsze logowanie
 
-### Logowanie
-
-1. Otwórz przeglądarkę i przejdź pod adres aplikacji (np. `http://127.0.0.1:8000/`).
-2. Zostaniesz automatycznie przekierowany na stronę logowania.
-3. Wpisz **login** i **hasło**, następnie kliknij **Zaloguj**.
-
-### Wylogowanie
-
-1. Kliknij ikonę użytkownika w prawym górnym rogu.
-2. Wybierz **Wyloguj**.
+Wejdź na `http://127.0.0.1:8000/` i zaloguj się danymi administratora. Po zalogowaniu zostaniesz przekierowany do widoku listy pracowników.
 
 ---
 
-## 2. Nawigacja po systemie
+## 2. Nawigacja
 
-Po lewej stronie ekranu znajduje się **boczne menu nawigacyjne**.
+Lewy panel nawigacyjny zawiera sekcje:
 
-| Sekcja | Co zawiera |
+| Sekcja | Zawiera |
 |---|---|
-| **Pracownicy** | Lista pracowników etatowych, Lista pracowników APT |
-| **Plany dzienne** | Lista zaimportowanych planów z przyciskami przydziału |
-| **Import danych** | Import planu, Import pracowników, Import pracowników APT |
-| **Stanowiska** | Lista stanowisk magazynowych |
-| **Przydziały** | Dashboard obsady (legacy), Historia przydziałów |
-| **Raporty** | Raport obsady w formacie Excel |
+| **Pracownicy** | Lista etatowców, Lista APT |
+| **Plany dzienne** | Historia planów i przydział |
+| **Import danych** | Trzy okna importu Excel |
+| **Stanowiska** | Katalog stanowisk magazynowych |
+| **Przydziały** | Dashboard obsady (legacy) |
+| **Raporty** | Eksport Excel |
 
-**Zwijanie menu:** kliknij przycisk **Zwiń** u góry — menu zwija się do ikon. Stan jest zapamiętywany między sesjami.
+Sidebar można zwinąć do paska ikon — kliknij strzałkę `«` u dołu panelu. Stan zapamiętywany jest w przeglądarce.
 
 ---
 
-## 3. Lista pracowników
+## 3. Lista pracowników etatowych
 
-**Ścieżka:** Menu → **Pracownicy**
+Link: **Zaimportowani pracownicy** w sekcji „Pracownicy".
 
-### Co widać w tabeli
+### Kolumny tabeli
 
-Każdy wiersz zawiera:
-- **Inicjały** — kolorowe koło
-- **Imię i nazwisko**
-- **Dział** — badge z nazwą działu
-- **Zmiana** i **Zmiana/Grupa** (np. `A-1`, `B-2`, `C-3`)
-- **Stanowisko**
-- **Kompetencje** — liczba aktywności z oceną > 0; kliknij, aby zobaczyć listę w oknie modalnym
+| Kolumna | Opis |
+|---|---|
+| Nr ewid. | Numer ewidencyjny z pliku KOMPETENCJE |
+| Nazwisko / Imię | Pełne dane pracownika |
+| **Przynależność** | Badge `Etat` (zielony) lub `APT` (żółty) — wskazuje, czy pracownik jest stałym pracownikiem etatowym czy agencyjnym (na podstawie pola `departament`) |
+| Data zatr. | Data zatrudnienia |
+| Stanowisko | Stanowisko magazynowe |
+| Strefa | Strefa w magazynie |
+| Dział | Dział pracownika; najedź, by zobaczyć top 4 kompetencje |
+| Zmiana / Gr. zm. | Zmiana (I/II/III/D) i kod grupy zmiany |
+| Przełożony | Bezpośredni przełożony |
+| Absencje | Zarejestrowane absencje; wyświetlane max 3 + licznik pozostałych |
+| Komp. | Liczba kompetencji; kliknij, by zobaczyć pełną listę w oknie modalnym |
 
-### Wyszukiwanie i filtrowanie
+### Filtry
 
-- Pole tekstowe — filtruje po imieniu lub nazwisku na bieżąco
-- Rozwijana lista **Dział** — zawęża wyniki do wybranego działu
-- Pole wyboru **Tylko nieobecni** — pokazuje pracowników z jakąkolwiek absencją
+**Pole wyszukiwania** — wpisz fragment imienia lub nazwiska; lista odświeża się automatycznie po wpisaniu.
 
-### Usuwanie
+**Zakładki arkuszy** (nad tabelą) — kliknij zakładkę (np. `IB`, `FF`, `OB`), by zobaczyć tylko pracowników z danego arkusza Struktury. Zakładka `Wszyscy` przywraca pełną listę.
 
-- **Pojedynczy pracownik:** ikona kosza → potwierdź
-- **Wszyscy:** przycisk **Wyczyść wszystkich** → potwierdź w oknie dialogowym
+**Panel filtrów** — po prawej stronie pola wyszukiwania:
+- **Tylko z absencjami** — toggle; włączony pokazuje wyłącznie pracowników z przynajmniej jedną absencją
+- **Typ: Etat / APT** — dwa checkboxy:
+  - zaznacz **Etat** → pokaż tylko pracowników etatowych (bez agencyjnych)
+  - zaznacz **APT** → pokaż tylko pracowników agencyjnych
+  - oba lub żaden → wszyscy pracownicy
 
-> Usunięcie jest trwałe. Dane można przywrócić tylko przez ponowny import.
+Filtry można łączyć. Przycisk `× Wyczyść filtr` (pojawia się gdy filtry aktywne) resetuje wszystkie parametry.
+
+**Filtry kolumnowe** — dodatkowy wiersz pod nagłówkami tabeli pozwala zawężać wyniki kolumna po kolumnie.
 
 ---
 
 ## 4. Lista pracowników APT
 
-**Ścieżka:** Menu → **Pracownicy** → **APT**
+Link: **Lista APT** w sekcji „Pracownicy".
 
-Tabela pracowników agencji pracy tymczasowej. Kolumny: nazwisko, imię, agencja, płeć, grupa.
+Wyświetla pracowników tymczasowych (agencyjnych) zaimportowanych z osobnego pliku APT. Kolumny: nazwisko, imię, agencja, płeć, grupa zmiany.
 
----
-
-## 5. Plany dzienne
-
-**Ścieżka:** Menu → **Plany dzienne**
-
-Widok kafelków wszystkich zaimportowanych planów. Każdy kafelek zawiera:
-- Nazwę pliku i datę importu
-- Liczbę aktywności i rekordów godzinowych
-- Status przydziału (kiedy ostatnio przeliczony)
-- Przycisk **Przydziel pracowników** — uruchamia/przelicza przydział
-- Przycisk **Wyniki** — otwiera stronę wyników (widoczny gdy przydział istnieje)
-- Przycisk **Usuń plan**
-
-### Jak zaimportować nowy plan
-
-Kliknij **Import planu zmianowego** w menu bocznym — patrz sekcja 8.1.
+Filtruj po agencji klikając zakładkę nad tabelą. Pole wyszukiwania działa identycznie jak na liście etatowej.
 
 ---
 
-## 6. Przydział pracowników do planu
+## 5. Import danych
 
-**Ścieżka:** Lista planów → przycisk **Przydziel pracowników**
+### 5.1 Import planu zmianowego
 
-Po kliknięciu system automatycznie:
+Link: **Import planu zmianowego** w sekcji „Import danych".
 
-1. Wczytuje zapotrzebowanie godzinowe z planu dla każdej aktywności i zmiany
-2. Dla każdej zmiany (I/II/III) buduje pulę pracowników na podstawie `zmiana_grupa`:
-   - Zmiana I → pracownicy z grupą `A-...`
-   - Zmiana II → pracownicy z grupą `B-...`
-   - Zmiana III → pracownicy z grupą `C-...`
-3. Przydziela pracowników do aktywności w kolejności:
-   - Priorytetowi etatowi (działy IN/OB/FF/ZW/PR) pasujący do aktywności
-   - Pozostali etatowi pasujący do aktywności
-   - Pracownicy APT sortowani wg ocen
-4. Priorytetowi bez przypisanej aktywności trafiają do najbliższej pasującej
-5. Zapisuje wynik i przekierowuje na stronę wyników
+1. Kliknij **Wybierz plik** i wskaż plik `Plan_dzienny_NEW.xlsx`.
+2. Kliknij **Wgraj i podejrzyj** — zobaczysz podgląd tabeli z zapotrzebowaniem podzielonym na działy i zmiany.
+3. Sprawdź dane (liczby w kolumnach godzinowych).
+4. Kliknij **Zatwierdź import** — plan zostanie zapisany i pojawi się na liście planów.
 
-**Uwaga:** przycisk „Przydziel" przelicza od nowa — poprzedni wynik zostaje zastąpiony. Możesz przeliczać wielokrotnie (np. po reimporcie pracowników).
+> Jeśli kolumna godzinowa zawiera `#DIV/0!`, system traktuje ją jako 0 i informuje ostrzeżeniem.
 
-### Dopasowanie pracownika do aktywności
+---
 
-Pracownik jest kierowany do aktywności, jeśli spełnia **co najmniej jeden** warunek:
-- Jego **stanowisko** (dokładne) zgadza się z nazwą aktywności
-- Jego **dział** zawiera się lub zawiera nazwę działu aktywności
-- Jego **kod departamentu** (IN/OB/FF/ZW/PR) pasuje do słów kluczowych działu aktywności
-- Ma **kompetencję** (ocena > 0) dla tej aktywności w pliku KOMPETENCJE
+### 5.2 Import pracowników (etatowych i agencyjnych z Kompetencji)
+
+Link: **Import pracowników** w sekcji „Import danych".
+
+**Obsługiwane pliki (oba opcjonalne, najlepiej obydwa razem):**
+
+| Plik | Zawartość |
+|---|---|
+| `KOMPETENCJE_PRACOWNIKÓW_ACT_NEW.xlsx` | Dane pracowników, departament, grupy zmian, macierz kompetencji + oceny |
+| `Struktura___Grafik___Absencje_NEW.xlsx` | Dane kadrowe, grupy zmian, absencje; osobne arkusze per sektor (IB/OB/FF/ZW/PR) |
+
+> **Ważne:** Plik Struktury może zawierać zarówno pracowników etatowych (arkusze `Struktura IN/OB/FF/ZW/PR`) jak i agencyjnych (ci z polem `departament = APT 1/2/3/4`). System rozróżnia ich po tym polu — agencyjni są obsługiwani osobno w algorytmie przydziału.
+
+Przebieg:
+1. Wybierz jeden lub oba pliki.
+2. Kliknij **Wgraj i podejrzyj** → podgląd z liczbą pracowników, kompetencji, absencji.
+3. Kliknij **Zatwierdź** — poprzednia lista pracowników zostanie **całkowicie zastąpiona**.
+
+---
+
+### 5.3 Import pracowników APT
+
+Link: **Import pracowników APT** w sekcji „Import danych".
+
+**Krok 1 — mapowanie kolumn:**
+Zanim zaczniesz, przypisz numery kolumn (1–14) pliku APT do nazw działów. Kliknij **Konfiguracja kolumn**, wypełnij formularz i zapisz.
+
+**Krok 2 — import pliku:**
+Wskaż plik `PracownicyAPT*.xlsx`, kliknij **Wgraj i podejrzyj**, a następnie **Zatwierdź**. Poprzednia lista APT zostanie zastąpiona.
+
+---
+
+## 6. Plany dzienne i przydział
+
+Link: **Plany dzienne** w sekcji nawigacji.
+
+### Kafelek planu
+
+Każdy zaimportowany plan wyświetlany jest jako kafelek z:
+- Nazwą pliku i datą importu
+- Datą planu (jeśli rozpoznano z nazwy pliku)
+- Liczbą aktywności i rekordów godzinowych
+- Statusem przydziału (jeśli był uruchomiony): czas ostatniego przeliczenia
+
+**Przyciski:**
+- **Przydziel** (lub **Przelicz ponownie**) — uruchamia algorytm przydziału
+- **Wyniki** (widoczny gdy przydział istnieje) — otwiera stronę wyników
+
+### Jak działa przydział
+
+Po kliknięciu **Przydziel** system wykonuje automatyczny przydział pracowników do aktywności. Algorytm:
+
+1. **Wczytuje dane** z bazy: plan, pracownicy, kompetencje, oceny, absencje.
+
+2. **Rozróżnia pracowników:**
+   - **Etatowi** — pracownicy stałi (departament `FF`, `IN`, `OB`, `ZW`, `PR` lub pusty). Pracownicy z `departament = APT*` są wyklucza z tej puli.
+   - **APT** — pracownicy agencyjni z osobnego importu APT (model `PracownikAPT`)
+   - **Nieobecni** — pracownicy z absencją w dniu planu (tylko jeśli plan ma datę)
+
+3. **Dla każdej zmiany (I, II, III, D) wykonuje 3 fazy w tej kolejności:**
+
+   **Faza 1 — pre-rezerwacja etatowych (wg macierzy procesowej):**
+   Każdy etatowy pracownik z oceną dopasowaną do aktywności przez macierz procesową jest wstępnie kierowany do aktywności, gdzie ma najwyższą ocenę. Pracownicy z najwyższymi ocenami obsługiwani pierwsi.
+
+   **Faza 2 — uzupełnienie przez etatowych:**
+   Dla każdej aktywności: spośród nieprzydzielonych etatowych wybierani są ci, którzy pasują do aktywności (stanowisko, dział, departament lub kompetencja) i sortowani wg oceny malejąco. Zapełniają wolne miejsca do pojemności aktywności.
+
+   **Faza 3 — APT wypełnia pozostałe miejsca:**
+   Dopiero po zakończeniu Faz 1 i 2 dla **wszystkich** aktywności, pracownicy APT mogą dostać przydział. APT nigdy nie zajmuje miejsca etatowemu — nawet jeśli ma wyższą ocenę.
+
+4. **Zmiana D (specjalna):**
+   Dotyczy pracowników z grupą zmiany zaczynającą się na `D`. Obejmuje aktywności z działów PRASA i KDR. Przetwarzana osobno po zmianach I–III, z identycznym algorytmem 3-fazowym.
+
+5. **Nieprzydzieleni** trafiają do sekcji „bez przypisanej aktywności" z wyjaśnieniem powodu (patrz sekcja 7.3).
 
 ---
 
 ## 7. Wyniki przydziału
 
-**Ścieżka:** Lista planów → przycisk **Wyniki**
+Link: **Wyniki** przy danym planie lub `.../<pk>/wyniki/`.
 
-### Podsumowanie (góra strony)
+### 7.1 Podsumowanie — kafelki zmian
 
-Trzy kafelki — po jednym na zmianę — pokazują łączną liczbę przypisanych pracowników i liczbę bez aktywności (fillers).
+Na górze strony cztery kafelki (Zmiana I, II, III, D) z liczbą:
+- przypisanych pracowników (liczba zielona)
+- nieprzypisanych (liczba czerwona, jeśli > 0)
 
-### Zakładki zmian
+### 7.2 Zakładki zmian
 
-Kliknij zakładkę **Zm. 1 / Zm. 2 / Zm. 3**, aby przełączać między zmianami.
+Kliknij zakładkę **Zm. I**, **Zm. II**, **Zm. III** lub **Zm. D**, żeby zobaczyć wyniki dla danej zmiany. Liczba w badge zakładki = suma pracowników przydzielonych + nieprzydzielonych.
 
-### Karta aktywności
+### 7.3 Tabela aktywności
 
-Każda aktywność wyświetlona jest jako karta zawierająca:
+Dla każdej aktywności:
 
-- **Nagłówek zielony** — plan obsadzony w pełni (`przydzielono ≥ wymagana`)
-- **Nagłówek żółty** — niedobór; ikona ostrzeżenia z informacją ile brakuje
-- **Badge** `przydzielono / wymagana` — np. `5 / 7`
+**Nagłówek aktywności:**
+- Nazwa aktywności i działu
+- Ikona ostrzeżenia `⚠` gdy faktyczna obsada < wymaganej
+- Badge `przydzielono / wymagana` (czerwony przy niedoborze)
 
-**Tabela godzinowa:**
-
-| Wiersz | Znaczenie |
-|---|---|
-| **Plan** | Wymagana liczba pracowników w danej godzinie (czerwone komórki = niedobór) |
-| **Fakt** | Faktyczna obsada (stała = liczba przydzielonych pracowników) |
+**Tabela godzinowa Plan/Fakt:**
+- Wiersz **Plan** = wymagana liczba osób dla każdej godziny (komórki czerwone gdy > obsada)
+- Wiersz **Fakt** = faktyczna liczba przydzielonych
+- Zakres godzin zależy od zmiany (Zm. I: 6–13, Zm. II: 14–21, Zm. III: 22–5)
 
 **Lista pracowników:**
+Każdy pracownik ma:
+- Badge z kodem grupy zmiany: A=zielony, B=niebieski, C=czerwony, D=fioletowy
+- Badge `APT` (żółty) — jeśli pracownik agencyjny
+- Badge `N` — jeśli nieobecny w dniu planu (absencja)
+- Tooltip (najedź myszą) z pełnym imieniem, grupą, ewentualną absencją
 
-Każdy pracownik pokazany jako karta z:
-- Inicjał imienia i nazwisko
-- **Kolorowy badge grupy zmiany:** `A-1` (zielony), `B-2` (niebieski), `C-3` (czerwony)
-- **Badge APT** (żółty) — dla pracowników agencyjnych
-- **Tooltip** (najedź kursorem): pełne imię i nazwisko · grupa zmiany · `N` (jeśli nieobecny w dniu planu) · `APT`
+### 7.4 Sekcja „bez przypisanej aktywności"
 
-### Sekcja „bez przypisanej aktywności"
+Pojawia się gdy dla danej zmiany są pracownicy nieprzydzieleni do żadnej aktywności.
 
-Na dole każdej zakładki zmiany: lista pracowników, którym nie znaleziono żadnej pasującej aktywności.
+**Legenda powodów** (nad listą): liczniki pokazują ile pracowników ma dany powód:
 
-### Modale z informacjami szczegółowymi
+| Kolor badge | Powód | Znaczenie |
+|---|---|---|
+| Czerwony `(N)` | Nieobecny | Pracownik ma zarejestrowaną absencję w dniu planu |
+| Pomarańczowy | Aktywności pełne | Pracownik pasuje do co najmniej jednej aktywności zmiany, ale wszystkie miejsca są zajęte |
+| Szary | Brak dopasowania | Pracownik nie pasuje do żadnej aktywności tej zmiany (inny dział, inne kompetencje) |
 
-Kliknij w dowolny z poniższych elementów, aby otworzyć okno z informacjami:
+**Etatowi** i **APT** wyświetlani w osobnych grupach.
 
-| Element | Co pokazuje modal |
-|---|---|
-| **Nazwa aktywności** (z ikoną ↗) | Grupy procesowe, do których należy aktywność + lista czynności z macierzy (✓ zielona = aktywność istnieje w bazie) + pracownicy przydzieleni z oceną procesową |
-| **Badge działu** (np. „Inbound") | Wszystkie grupy procesowe przypisane do tego działu |
-| **Karta pracownika** | Top 4 kompetencje pracownika + jego pozycja rankingowa w grupach procesowych |
+**Skrót sektora** (np. `FF`, `OB`, `IN`) widoczny przy każdym etatowcu jako mały szary chip. Pełna informacja dostępna w tooltipie (najedź myszą).
 
-### Przelicz ponownie
-
-Przycisk **Przelicz ponownie** w prawym górnym rogu strony uruchamia przydział od nowa (po potwierdzeniu).
-
----
-
-## 8. Macierz procesowa
-
-**Ścieżka:** Menu → **Pracownicy** → **Macierz procesowa** (lub `/pracownicy/macierz-procesowa/`)
-
-Macierz mapuje 57 grup procesowych na aktywności w bazie danych i pokazuje oceny pracowników per grupa.
-
-### Tryb: Mapowanie
-
-Domyślny widok (`?tryb=mapowanie`). Tabela aktywności z kolorowymi wskaźnikami:
-- **Zielony** — czynnosc z grupy procesowej istnieje w bazie danych
-- **Czerwony** — czynnosc z macierzy nie ma odpowiednika w bazie
-
-Służy do weryfikacji, czy nazwy aktywności w plikach KOMPETENCJE zgadzają się z nazwami w macierzy kompetencji PDF.
-
-### Tryb: Ranking
-
-Widok `?tryb=ranking`. Dla każdej grupy procesowej lista pracowników z najwyższą średnią oceną (avg wszystkich czynności grupy). Pokazuje, kto jest najlepszym kandydatem do danego procesu.
-
-System przydziału pracowników automatycznie korzysta z tych rankingów — pracownicy z wysokimi ocenami w danej grupie procesowej są kierowani do odpowiadających aktywności w planie.
+> Sekcja „aktywności pełne" NIE oznacza błędu algorytmu — to normalne zjawisko, gdy plan wymaga mniej osób niż dostępnych pracowników danej zmiany i działu. Ważne: APT nie może być przyczyną zajęcia miejsca etatowemu.
 
 ---
 
-## 9. Import danych
+## 8. Stanowiska
 
-Każdy import działa dwuetapowo: **wgraj → podejrzyj → zatwierdź**.
+Link: **Lista stanowisk**.
 
----
-
-## 9.1 Import planu zmianowego
-
-**Ścieżka:** Menu → **Import danych** → **Import planu zmianowego**
-
-### Wymagany plik
-
-`Plan_dzienny_NEW.xlsx` — układ kolumn musi być zgodny z szablonem.
-
-### Krok 1 — wgranie i podgląd
-
-1. Kliknij **Wybierz plik** i wskaż plik `Plan_dzienny_NEW.xlsx`.
-2. Kliknij **Wgraj i podejrzyj**.
-3. Sprawdź tabelę podglądu: aktywność, dział, sumy Zmiana I/II/III, wolumen.
-
-### Krok 2 — zatwierdzenie
-
-1. Kliknij **Zatwierdź i zapisz**.
-2. Plan zostaje zapisany i pojawia się na liście planów.
-
-### Częste błędy
-
-| Komunikat | Co zrobić |
-|---|---|
-| *Plik musi być .xlsx* | Upewnij się, że format pliku to Excel 2007+ |
-| *Nie znaleziono żadnych aktywności* | Sprawdź, czy kolumna B zawiera wartość `Bufor` w wierszach działów |
-| *Błąd parsowania* | Otwórz plik w Excelu, zapisz ponownie i spróbuj jeszcze raz |
+Katalog stanowisk magazynowych z parametrami fizycznymi (siła dźwigania, intensywność chodzenia, praca na stojąco itp.). Możesz dodawać, edytować i usuwać stanowiska.
 
 ---
 
-## 9.2 Import pracowników
+## 9. Raporty
 
-**Ścieżka:** Menu → **Import danych** → **Import pracowników**
+Link: **Raport obsady (Excel)** w sekcji „Raporty".
 
-### Wymagane pliki
-
-Wgraj jeden lub oba:
-
-| Plik | Co zawiera |
-|---|---|
-| `KOMPETENCJE_PRACOWNIKÓW_ACT_NEW.xlsx` | Lista pracowników, oceny kompetencji dla każdej aktywności, `zmiana_grupa` (kol. L) |
-| `Struktura___Grafik___Absencje_NEW.xlsx` | Dane kadrowe (stanowisko, dział, zmiana, przełożony), absencje; `zmiana_grupa` z kolumny „Zmiana grupa" |
-
-> **Każdy import zastępuje całą listę pracowników.** Skasowanie nie może być cofnięte — dane można przywrócić tylko przez ponowny import.
-
-### Jak działa scalanie plików
-
-Gdy wgrasz oba pliki jednocześnie, dane z pliku Struktury **nadpisują** dane z KOMPETENCJE dla tych samych pracowników (dopasowanie po nazwisku + imieniu). Wgranie samego pliku KOMPETENCJE też zapisuje `zmiana_grupa` — z kolumny L tego pliku.
-
-### Krok 1 — wgranie i podgląd
-
-1. Wskaż pliki w odpowiednich polach.
-2. Kliknij **Wgraj i podejrzyj**.
-3. Sprawdź podgląd: liczba pracowników, wypełnione grupy zmian, liczba kompetencji.
-
-### Krok 2 — zatwierdzenie
-
-1. Kliknij **Zatwierdź — zastąp wszystkich pracowników**.
-2. System usunie poprzednią listę i wstawi nową wraz z kompetencjami i absencjami.
-
-### Wskazówki
-
-- Wgraj oba pliki jednocześnie, aby uzyskać pełny profil (kompetencje + dane kadrowe + absencje).
-- Po reimporcie **przelicz ponownie** plany, aby wyniki przydziału odzwierciedlały nowe dane.
-- Jeśli widzisz pracowników bez grupy zmiany w wynikach przydziału — sprawdź, czy kolumna L (KOMPETENCJE) lub „Zmiana grupa" (Struktura) jest wypełniona w pliku.
+Eksportuje raport obsady do pliku `.xlsx`.
 
 ---
 
-## 9.3 Import pracowników APT
+## 10. Typowe problemy
 
-**Ścieżka:** Menu → **Import danych** → **Import pracowników APT**
+### Brak zakładki „Zm. D" lub pusta
 
-### Krok 0 — konfiguracja mapowania kolumn (jednorazowe)
+Zmiana D dotyczy tylko aktywności z działów PRASA i KDR. Jeśli plan nie zawiera takich aktywności, zakładka będzie pusta. Wymaga też pracowników z grupą zmiany zaczynającą się od litery `D`.
 
-Plik APT zawiera 14 kolumn z ocenami (numery 1–14). Musisz przypisać każdej kolumnie nazwę działu.
+### Liczba absencji nie zgadza się z planem
 
-1. W sekcji **Mapowanie kolumn APT** wypełnij pola 1–14.
-2. Kliknij **Zapisz mapowanie**.
+Absencje sprawdzane są tylko gdy plan ma datę. Jeśli data nie była rozpoznana przy imporcie, pole `data_planu` jest puste — absencje nie będą uwzględniane. Sprawdź datę planu w panelu `/admin/`.
 
-Mapowanie jest zapamiętywane — nie trzeba go ustawiać przy każdym imporcie.
+### Pracownicy APT widoczni na liście etatowych
 
-### Krok 1 — wgranie i podgląd
+Plik KOMPETENCJE może zawierać pracowników agencyjnych z `departament = APT 1/2/3/4`. Są oni widoczni na liście pracowników z żółtym badge'em `APT` i można ich odfiltrować przez checkbox **APT** w panelu filtrów. W algorytmie przydziału są automatycznie wykluczani z puli etatowych i obsługiwani jako APT.
 
-1. Wskaż plik `PracownicyAPT*.xlsx`.
-2. Kliknij **Parsuj i podejrzyj**.
-3. Sprawdź podgląd: nazwisko, imię, agencja, płeć, grupa, liczba ocen > 0.
+### Po imporcie zniknęli poprzedni pracownicy
 
-### Krok 2 — zatwierdzenie
+Każdy import pracowników zastępuje **całą** listę. Nie ma mechanizmu scalania. Jeśli chcesz zachować dane z dwóch plików jednocześnie, wgraj oba w ramach jednego importu (pola KOMPETENCJE + Struktura).
 
-1. Kliknij **Zatwierdź — zastąp wszystkich pracowników APT**.
-2. Poprzedni lista APT jest usuwana i zastępowana nową.
+### Błąd przy wgrywaniu pliku
+
+Sprawdź, czy plik jest zapisany w formacie `.xlsx` (nie `.xls` ani `.csv`) i czy ma poprawne nagłówki kolumn (w odpowiednich wierszach). Szczegóły formatu w `DOKUMENTACJA.md` sekcja 12.
 
 ---
 
-## 10. Stanowiska
-
-**Ścieżka:** Menu → **Stanowiska**
-
-Widok kart stanowisk magazynowych. Każda karta zawiera parametry fizyczne (wymagana siła, chodzenie, siedzenie, powtarzalność) i pasek obsady.
-
-> **Uwaga:** liczby obsady są aktualnie niedostępne (stub: 0) — moduł jest w trakcie integracji.
-
-### Zarządzanie stanowiskami
-
-- **Dodaj stanowisko** — formularz z pełnymi parametrami
-- **Edytuj** / **Usuń** — ikony przy karcie stanowiska
-
----
-
-*Instrukcja obsługi — System Magazynowy v2.2 | 2026-07-11*
+*Instrukcja zaktualizowana: 2026-07-14 | System Magazynowy v2.3*

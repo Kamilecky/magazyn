@@ -27,8 +27,8 @@ System Magazynowy to aplikacja webowa zbudowana w Django 5.2, przeznaczona do za
 1. **Import planu dziennego** — wgraj plik `Plan_dzienny_NEW.xlsx`; parser odczytuje zapotrzebowanie godzinowe na 3 zmiany i zapisuje rekordy `ZapotrzebowanieGodzinowe`
 2. **Import pracowników** — wgraj plik `KOMPETENCJE_PRACOWNIKÓW_ACT_NEW.xlsx` i/lub `Struktura___Grafik___Absencje_NEW.xlsx`; dane scalane w profil pracownika wraz z `zmiana_grupa`
 3. **Import pracowników APT** — skonfiguruj mapowanie kolumn 1–14 na działy, wgraj plik z ocenami
-4. **Przydział pracowników** — kliknij „Przydziel" na planie; algorytm przydziela pracowników do aktywności według zmian, kompetencji i priorytetu departamentów
-5. **Wyniki przydziału** — tabela z zakładkami zmian, tabelami godzinowymi (Plan/Fakt), listą pracowników z kolorowym badge'em grupy zmiany i wskaźnikiem nieobecności
+4. **Przydział pracowników** — kliknij „Przydziel" na planie; algorytm przydziela pracowników do aktywności według zmian, kompetencji i priorytetu (etatowi przed APT)
+5. **Wyniki przydziału** — tabela z zakładkami zmian (I/II/III/D), tabelami godzinowymi (Plan/Fakt), listą pracowników z kolorowym badge'em grupy zmiany, wskaźnikiem nieobecności oraz sekcją nieprzypisanych z wyjaśnieniem przyczyn
 
 Dostęp do wszystkich widoków wymaga zalogowania. Parser nie korzysta z AI — wszystkie kolumny rozpoznawane są deterministycznie.
 
@@ -172,17 +172,22 @@ Wynik przydziału pracowników do planu. Jeden rekord na plan (OneToOne).
 | `nr_ewidencyjny` | CharField(50, null) | Numer ewidencyjny |
 | `imie` | CharField(100) | Imię |
 | `nazwisko` | CharField(100) | Nazwisko |
-| `departament` | CharField(20, blank) | Kod departamentu: `IN`, `OB`, `FF`, `ZW`, `PR` (priorytetowe) |
+| `departament` | CharField(20, blank) | Kod departamentu: `IN`, `OB`, `FF`, `ZW`, `PR` (etatowi priorytetowi) lub `APT 1`–`APT 4` (agencyjni) |
 | `stanowisko` | CharField(100, blank) | Stanowisko |
 | `strefa` | CharField(50, blank) | Strefa magazynowa |
 | `dzial` | CharField(100, blank) | Dział (z pliku struktury) |
 | `zmiana` | CharField(5, blank) | Zmiana (np. `I`, `II`, `III`) |
-| `zmiana_grupa` | CharField(10, blank) | Grupa zmiany (np. `A-1`, `B-2`, `C-3`) |
+| `zmiana_grupa` | CharField(10, blank) | Grupa zmiany (np. `A-1`, `B-2`, `C-3`, `D-2`) |
 | `przelozony` | CharField(100, blank) | Przełożony |
 | `komentarz` | TextField(blank) | Komentarz |
 | `data_zatrudnienia` | DateField(null) | Data zatrudnienia |
+| `arkusz` | CharField(50, blank) | Nazwa arkusza źródłowego z pliku Struktury (np. `Struktura FF`) |
 
 **Import:** każdy import zastępuje wszystkich pracowników (`Pracownik.objects.all().delete()` + `bulk_create`).
+
+**Źródło `departament`:** kolumna 0 pliku KOMPETENCJE. Pracownicy agencyjni mają `departament` = `APT 1`/`APT 2`/`APT 3`/`APT 4` — są wykluczani z puli etatowych w algorytmie przydziału.
+
+**Źródło `arkusz`:** nazwa arkusza w pliku Struktury (np. `Struktura IB`, `Struktura FF`). Używane do wyświetlania skrótu sektora w wynikach przydziału.
 
 **Źródło `zmiana_grupa`:** kolumna L (indeks 11) w pliku KOMPETENCJE, nadpisywana przez pole „Zmiana grupa" z pliku Struktury jeśli oba pliki importowane jednocześnie.
 
@@ -245,7 +250,22 @@ Wynik przydziału pracowników do planu. Jeden rekord na plan (OneToOne).
 
 ---
 
-### 4.11 `stanowiska.Stanowisko`
+### 4.11 `pracownicy.KonfiguracjaZmian`
+
+Singleton (pk=1). Mapuje numery zmian na litery grup pracowniczych.
+
+| Pole | Typ | Domyślna | Opis |
+|---|---|---|---|
+| `zmiana_1` | CharField(1) | `A` | Litera grupy dla Zmiany I (6–13) |
+| `zmiana_2` | CharField(1) | `B` | Litera grupy dla Zmiany II (14–21) |
+| `zmiana_3` | CharField(1) | `C` | Litera grupy dla Zmiany III (22–5) |
+| `zmiana_4` | CharField(1) | `D` | Litera grupy dla Zmiany D (PRASA/KDR) |
+
+Metoda `pobierz()` — `get_or_create(pk=1)`. Metoda `jako_slownik()` → `{1: 'A', 2: 'B', 3: 'C', 4: 'D'}`.
+
+---
+
+### 4.12 `stanowiska.Stanowisko`
 
 | Pole | Typ | Opis |
 |---|---|---|
@@ -264,7 +284,7 @@ Wynik przydziału pracowników do planu. Jeden rekord na plan (OneToOne).
 
 ---
 
-### 4.12 `konta.Profil`
+### 4.13 `konta.Profil`
 
 | Pole | Typ | Opis |
 |---|---|---|
@@ -279,7 +299,34 @@ Wynik przydziału pracowników do planu. Jeden rekord na plan (OneToOne).
 
 #### Lista pracowników (`/pracownicy/`)
 
-Tabela pracowników z filtrami (szukaj, dział, nieobecni), sortowaniem A–Z / Z–A, paginacją (50 na stronę). Kolumny: inicjały, imię/nazwisko, dział, zmiana, zmiana/grupa, stanowisko, liczba kompetencji. Kliknięcie w liczbę kompetencji otwiera modal z listą aktywności (AJAX).
+Tabela pracowników z filtrami i paginacją (50 na stronę).
+
+**Kolumny tabeli:**
+
+| Kolumna | Opis |
+|---|---|
+| Nr ewid. | Numer ewidencyjny |
+| Nazwisko / Imię | Dane osobowe |
+| **Przynależność** | Badge `Etat` (zielony) lub `APT` (żółty) — na podstawie `departament` pracownika |
+| Data zatr. | Data zatrudnienia |
+| Stanowisko | Stanowisko (z tooltipem) |
+| Strefa | Strefa magazynowa |
+| Dział | Badge z popoverem top 4 kompetencji (hover) |
+| Zmiana / Gr. zm. | Zmiana i grupa zmiany |
+| Przełożony | Imię i nazwisko przełożonego |
+| Absencje | Daty absencji (max 3 + licznik nadmiarowych) |
+| Komp. | Liczba kompetencji; kliknij → modal AJAX z pełną listą |
+
+**Filtry:**
+
+- **Pole tekstowe** — filtruje po imieniu lub nazwisku (debounced, 360 ms)
+- **Zakładki arkuszy** — zawęża do pracowników z danego arkusza Struktury (IN/IB/OB/FF/ZW/PR)
+- **Tylko z absencjami** — toggle; pokazuje tylko pracowników z co najmniej jedną absencją
+- **Typ: Etat / APT** — dwa checkboxy obok toggle'a absencji:
+  - zaznaczony tylko `Etat` → tylko etatowi (wyklucza `departament` = `APT*`)
+  - zaznaczony tylko `APT` → tylko agencyjni
+  - oba lub żaden → wszyscy
+- **Filtry kolumnowe** (wiersz pod nagłówkami) — zawężają po każdej kolumnie osobno
 
 ---
 
@@ -305,13 +352,23 @@ Widok wywołuje `_wykonaj_przydzial(plan)` i zapisuje wynik w `PrzydzialDzienny`
 
 Strona wynikowa przydziału. Składa się z:
 
-- **Podsumowanie** — trzy kafelki (Zmiana I/II/III) z liczbą przypisanych i fillersów
-- **Zakładki** — osobna zakładka na każdą zmianę z liczbą pracowników w badge
+- **Podsumowanie** — cztery kafelki (Zmiana I/II/III/D) z liczbą przypisanych i nieprzypisanych
+- **Zakładki** — osobna zakładka na każdą zmianę (Zm. I, Zm. II, Zm. III, Zm. D) z liczbą pracowników w badge
 - **Na każdą aktywność:**
   - Nagłówek: nazwa, ikona ostrzeżenia przy niedoborze, badge `przydzielono / wymagana`
   - Tabela godzinowa „Plan / Fakt": kolumny = godziny zmiany; „Plan" = wymagana liczba (komórki czerwone przy niedoborze), „Fakt" = faktyczna obsada
-  - Lista pracowników: badge z grupą zmiany (`A-1` zielony, `B-2` niebieski, `C-3` czerwony), badge APT (żółty), tooltip z pełnym imieniem, grupą i literą `N` dla nieobecnych
-- **„(bez przypisanej aktywności)"** — filler: pracownicy, którym nie przydzielono żadnej aktywności
+  - Lista pracowników: badge z grupą zmiany (A=zielony, B=niebieski, C=czerwony, D=fioletowy), badge APT (żółty), tooltip z pełnym imieniem, grupą i literą `N` dla nieobecnych
+- **„(bez przypisanej aktywności)"** — sekcja fillers z wyjaśnieniami i podziałem Etatowi/APT (szczegóły poniżej)
+
+**Sekcja „bez przypisanej aktywności" (fillers):**
+
+- **Legenda powodów** (nad listą): liczba pracowników nieobecnych / z zapełnionymi aktywnościami / bez dopasowania
+- **Etatowi** — pracownicy etatowi podzieleni per powód:
+  - Badge czerwony (`background:#fee2e2`) + `(N)` — nieobecny w dniu planu
+  - Badge pomarańczowy (`background:#ffedd5`) — pasuje do aktywności, ale wszystkie pełne
+  - Badge szary (`bg-light`) — brak dopasowania do żadnej aktywności zmiany
+  - Skrót sektora (np. `FF`, `OB`, `IN`) wyświetlany jako mały szary chip; pełna info w tooltipie
+- **APT** — pracownicy agencyjni z żółtym badge'em (`background:#fefce8`), powód w tooltipie
 
 ---
 
@@ -325,9 +382,11 @@ Dwuetapowy (upload → podgląd → zatwierdź). Zapisuje `PlanDzienny` + rekord
 
 Dwuetapowy import z opcjonalnymi dwoma plikami.
 
-**Scalanie danych:** `pracownicy_dict[key] = {**kompetencje_dane, **struktura_dane}` — struktura nadpisuje kompetencje dla tych samych kluczy `(nazwisko, imie)`. `zmiana_grupa` czytana z obu plików (kolumna L w KOMPETENCJE, kolumna „Zmiana grupa" w Strukturze).
+**Scalanie danych:** `pracownicy_dict[key] = {**kompetencje_dane, **struktura_dane}` — struktura nadpisuje kompetencje dla tych samych kluczy `(nazwisko, imie)`. `zmiana_grupa` czytana z obu plików.
 
 Po zatwierdzeniu: `Pracownik.objects.all().delete()` + `bulk_create` pracowników, kompetencji, absencji.
+
+> **Uwaga:** Plik Struktury zawiera zarówno pracowników etatowych (arkusze `Struktura IN/OB/FF/ZW/PR`) jak i agencyjnych (ci z `departament = APT*`). Algorytm przydziału wykluwa agencyjnych z puli etatowej i obsługuje ich osobno przez model `PracownikAPT`.
 
 ---
 
@@ -345,7 +404,7 @@ Sekcja mapowania kolumn (`action='save_mapping'`) + dwuetapowy import. Po zatwie
 - `_to_float()`: `None` → 0, `#DIV/0!` → 0 + ostrzeżenie
 
 #### `kompetencje.py`
-- Kolumny 0–13: dane pracownika (w tym indeks 11 = `zmiana_grupa`)
+- Kolumny 0–13: dane pracownika (w tym indeks 0 = `departament`, indeks 11 = `zmiana_grupa`)
 - `_forward_fill()` dla scalonych komórek nagłówkowych
 - Kolumny 14+: aktywności; tylko `wynik > 0` zapisywany
 - Pomija kolumny z `'prasa'` w nazwie działu
@@ -354,6 +413,7 @@ Sekcja mapowania kolumn (`action='save_mapping'`) + dwuetapowy import. Po zatwie
 - Arkusze: `Struktura IB/OB/FF/PR/ZW`
 - Wiersz 6 (1-indexed) = nagłówki, wiersz 7+ = dane
 - Daty w nagłówkach → rekordy absencji; typy z arkusza `Listy Rozwijane` col B
+- Zapisuje `_sheet` = nazwę arkusza → pole `Pracownik.arkusz` (np. `Struktura FF`)
 
 #### `pracownicy_apt.py`
 - Arkusz `PracownicyAPT01`
@@ -396,14 +456,25 @@ Funkcja `_wykonaj_przydzial(plan: PlanDzienny) -> dict` w `apps/pracownicy/views
 ### 6.1 Dane wejściowe
 
 - `ZapotrzebowanieGodzinowe` dla planu → `plan_godziny: {(akt_pk, zmiana): {godzina: liczba_osob}}`
-- `Pracownik.objects.all()` — wszyscy pracownicy etatowi
+- `Pracownik.objects.all()` filtrowany do etatowych (wyklucza `departament` zaczynające się od `APT`) → `pracownicy`
 - `KompetencjaPracownika` filtrowana do aktywności w planie → `komp_map: {pracownik_pk: set(aktywnosc_pk)}`
 - `PracownikAPT` + `OcenaAPT` → `comp_apt: {(apt_pk, akt_pk): max_ocena}`
 - `AbsencjaPracownika` dla `plan.data_planu` → `nieobecni_pks: set[int]`
 
-### 6.1a Macierz procesowa w przydziale
+### 6.1a Rozróżnienie etatowi / APT
 
-Od wersji 2.2 algorytm używa `worker_group_score[(worker_pk, plan_akt_pk)]` — średniej oceny pracownika ze wszystkich czynności w grupach procesowych dopasowanych fuzzy do danej aktywności planu. Szczegóły w sekcji 7.
+Pula etatowych (`pracownicy`) obejmuje wyłącznie rekordy `Pracownik` z `departament` **nie** zaczynającym się od `'APT'`. Pracownicy z `departament = APT 1/2/3/4` (z pliku KOMPETENCJE) są pomijani w tej puli — obsługuje ich model `PracownikAPT`.
+
+```python
+pracownicy = [
+    p for p in Pracownik.objects.all()
+    if not p.departament.strip().upper().startswith('APT')
+]
+```
+
+### 6.1b Macierz procesowa w przydziale
+
+Algorytm używa `worker_group_score[(worker_pk, plan_akt_pk)]` — średniej oceny pracownika ze wszystkich czynności w grupach procesowych dopasowanych fuzzy do danej aktywności planu. Szczegóły w sekcji 7.
 
 ### 6.2 Pojemność aktywności
 
@@ -415,23 +486,31 @@ Szczyt zapotrzebowania godzinowego zaokrąglony w górę.
 
 ### 6.3 Podział na zmiany
 
-| Zmiana | Litera | Godziny |
-|---|---|---|
-| I | A | 6–13 |
-| II | B | 14–21 |
-| III | C | 22–23, 0–5 |
+| Zmiana | Litera | Godziny | Typ |
+|---|---|---|---|
+| I | A | 6–13 | Standardowa |
+| II | B | 14–21 | Standardowa |
+| III | C | 22–23, 0–5 | Standardowa |
+| D | D | Zmienne | PRASA/KDR (specjalna) |
 
-Pracownik trafia do zmiany gdy jego `zmiana_grupa` zaczyna się na odpowiednią literę (A/B/C). Pracownicy bez `zmiana_grupa` przydzielani są do pierwszej zmiany, w której jeszcze nie figurują (`globally_assigned_prac` — deduplication).
+Pracownik trafia do zmiany gdy jego `zmiana_grupa` zaczyna się na odpowiednią literę (A/B/C/D). Pracownicy bez `zmiana_grupa` przydzielani są do pierwszej standardowej zmiany, w której jeszcze nie figurują (`globally_assigned_prac` — deduplication).
 
-### 6.4 Kolejność wypełniania do `capacity`
+**Obsługa absencji:** pracownicy z `pk ∈ nieobecni_pks` są **wykluczeni** z pul `unassigned_priority` i `unassigned_others`. Trafiają bezpośrednio do sekcji fillers z flagą `nieobecny=True` (raz na plan — `globally_absent_shown` zapobiega duplikatom między zmianami).
 
-**Faza 1 — pre-rezerwacja wg macierzy procesowej:**
-Każdy pracownik z niezerowym `worker_group_score` jest kierowany do aktywności, gdzie ma najwyższy wynik. Pracownicy z najwyższymi wynikami obsługiwani pierwsi (greedy, sort desc).
+### 6.4 Priorytety przydziału — zasada etatowi przed APT
 
-**Faza 2 — uzupełnienie standardowe:**
-1. **Pracownicy priorytetowi** (`departament` ∈ {`IN`, `OB`, `FF`, `ZW`, `PR`}) pasujący do aktywności
-2. **Pozostali pracownicy** pasujący do aktywności — sortowani wg `worker_group_score` desc
-3. **Pracownicy APT** sortowani malejąco wg oceny dla tej aktywności
+**Absolutna zasada:** wszyscy etatowi pracownicy muszą zostać rozpatrzeni we wszystkich aktywnościach zanim jakikolwiek pracownik APT dostanie przydział.
+
+**Faza 1 — pre-rezerwacja wg macierzy procesowej (tylko etatowi):**
+Każdy etatowy pracownik z niezerowym `worker_group_score` jest kierowany do aktywności, gdzie ma najwyższy wynik. Pracownicy z najwyższymi wynikami obsługiwani pierwsi (greedy, sort desc).
+
+**Faza 2 — uzupełnienie standardowe (tylko etatowi):**
+Dla każdej aktywności: kandydaci z `unassigned_priority | unassigned_others` spełniający co najmniej jedno kryterium dopasowania, sortowani wg `worker_group_score` desc → priorytet działu → nazwisko. APT nie uczestniczy w tej fazie.
+
+**Faza 3 — APT wypełnia pozostałą pojemność:**
+Dopiero po zakończeniu Faz 1 i 2 dla **wszystkich** aktywności, pracownicy APT (`unassigned_apt`) wypełniają wolne miejsca. Sortowani wg `comp_apt[(apt_pk, akt_pk)]` desc.
+
+**Force-assign:** etatowi pracownicy priorytetowi, którym nie przydzielono żadnej aktywności po Fazie 2, są umieszczani w pierwszej pasującej aktywności (ignorując pojemność). APT nie podlega force-assign.
 
 ### 6.5 Kryteria dopasowania pracownika do aktywności (`_pasuje_do_aktywnosci`)
 
@@ -455,19 +534,34 @@ _DEPT_KEYWORDS = {
 }
 ```
 
-### 6.6 Force-assign
+### 6.6 Zmiana D (PRASA/KDR)
 
-Priorytetowi pracownicy, którym nie przydzielono żadnej aktywności (po głównej pętli), są force-assign'owani do pierwszej aktywności pasującej przez dział, departament lub kompetencję.
+Przetwarzana osobno, po pętli zmian I–III. Obejmuje aktywności z działów PRASA i KDR, dopasowane przez grupy procesowe nr 24 (PRASA) i 56 (KDR) oraz filtr słów kluczowych `{'kdr', 'zwrot', 'prasa'}` w nazwie działu.
 
-### 6.7 Fillers
+Pracownicy z `zmiana_grupa` zaczynającą się od litery D (konfigurowalnej w `KonfiguracjaZmian.zmiana_4`). Algorytm wewnętrzny identyczny jak dla zmian I–III (Fazy 1/2/3).
 
-Pracownicy z danej zmiany, którym mimo force-assign nie znaleziono aktywności, lądują w kategorii `(bez przypisanej aktywności)` wyświetlanej na dole zakładki zmiany.
+Wyniki w `PrzydzialDzienny.dane` pod kluczem `"4"`.
+
+### 6.7 Fillers i powody nieprzypisania
+
+Pracownicy, którym nie przydzielono żadnej aktywności, lądują w `__fillers__`. Każdy filler ma pole `powod`:
+
+| Powód | Znaczenie |
+|---|---|
+| `nieobecny` | Pracownik nieobecny w dniu planu (absencja) |
+| `capacity` | Pasuje do co najmniej jednej aktywności, ale wszystkie są pełne |
+| `no_match` | Nie pasuje do żadnej aktywności tej zmiany |
+| `no_activities` | Zmiana nie ma żadnych aktywności w planie |
+
+Pole `sektor` fillerów etatowych: skrót sektora wyciągany z `Pracownik.arkusz` przez funkcję `_sektor()` (np. `"Struktura FF"` → `"FF"`). Jeśli `arkusz` jest pusty (pracownik zaimportowany tylko z KOMPETENCJE), `sektor = ''`.
+
+Widok `wyniki_przydzialu` uzupełnia brakujący `sektor` z bazy przy renderowaniu (backwards-compat dla starych przydziałów).
 
 ### 6.8 Struktura JSON `PrzydzialDzienny.dane`
 
 ```json
 {
-  "1": {                          // klucz = numer zmiany
+  "1": {
     "<akt_pk>": {
       "nazwa": "Picking",
       "dzial": "Outbound",
@@ -479,17 +573,38 @@ Pracownicy z danej zmiany, którym mimo force-assign nie znaleziono aktywności,
           "nazwisko": "Kowalski",
           "zmiana_grupa": "A-1",
           "nieobecny": false,
-          "wynik": null,
+          "wynik": 4.2,
           "zapychacz": false,
           "apt": false
         }
       ],
-      "godziny": {"6": 3.0, "7": 5.0, "8": 5.0, "9": 4.0, "10": 3.0, "11": 2.0, "12": 2.0, "13": 1.0}
+      "godziny": {"6": 3.0, "7": 5.0, "8": 5.0, "9": 4.0}
     },
-    "__fillers__": { ... }
+    "__fillers__": {
+      "nazwa": "(bez przypisanej aktywności)",
+      "dzial": "",
+      "wymagana": 12,
+      "pracownicy": [
+        {
+          "pk": 99,
+          "imie": "Anna",
+          "nazwisko": "Nowak",
+          "zmiana_grupa": "A-2",
+          "nieobecny": false,
+          "powod": "capacity",
+          "sektor": "FF",
+          "wynik": null,
+          "zapychacz": true,
+          "apt": false
+        }
+      ],
+      "powody": {"nieobecny": 3, "capacity": 7, "no_match": 2},
+      "godziny": {}
+    }
   },
-  "2": { ... },
-  "3": { ... }
+  "2": { "...": "..." },
+  "3": { "...": "..." },
+  "4": { "...": "..." }
 }
 ```
 
@@ -512,11 +627,7 @@ Plik `apps/pracownicy/grupy_procesowe.py` zawiera stałą `GRUPY_PROCESOWE: list
 }
 ```
 
-Czynności w grupach procesowych odpowiadają dokładnie nazwom `Aktywnosc.nazwa` w bazie (z pliku KOMPETENCJE). Nazwy aktywności w planie dziennym są innymi (skróconymi) nazwami — stąd potrzeba fuzzy-matchingu.
-
 ### 7.2 Funkcje module-level (views.py)
-
-Zdefiniowane na poziomie modułu (poza widokami), dostępne zarówno w `_wykonaj_przydzial` jak i `wyniki_przydzialu`:
 
 | Symbol | Opis |
 |---|---|
@@ -527,56 +638,44 @@ Zdefiniowane na poziomie modułu (poza widokami), dostępne zarówno w `_wykonaj
 | `_nrm(s)` | Normalizacja: lowercase + collapse whitespace + usuń spację przed `)` lub `]` |
 | `_words(s)` | `_nrm` + usuń interpunkcję + filtr słów ≥ 3 znaki |
 | `_find_all_groups(nazwa)` | Fuzzy-match nazwy aktywności → lista grup |
+| `_sektor(arkusz)` | Wyciąga skrót sektora z nazwy arkusza: `"Struktura FF"` → `"FF"` |
 
 ### 7.3 Łańcuch dopasowań `_find_all_groups`
 
-1. **Exact** — `_akt_to_group_exact.get(akt_nazwa)` (czynnosc ≡ nazwa)
-2. **Substring nazwy grupy** (min 3 znaki) — `norm in g_norm or g_norm in norm`
-3. **Word-set nazwy grupy** (min 2 słowa) — jeden zbiór ⊆ drugiego
-4. **Substring czynności** (min 4 znaki) — obu kierunki
+1. **Exact** — `_akt_to_group_exact.get(akt_nazwa)`
+2. **Substring nazwy grupy** (min 3 znaki)
+3. **Word-set nazwy grupy** (min 2 słowa)
+4. **Substring czynności** (min 4 znaki)
 5. **Word-set czynności** (min 2 słowa)
-6. **`_MANUAL_MAP`** — ręczne mapowania dla znanych literówek i agregatów:
-   - `Konsolidacje + zasileniacC(P3/P4/P7)/R1/R2` → [11, 49] (literówka)
-   - `Retail OUT` → [54]; `Total Batch` → [9, 38, 39, 40]
-   - `Prasa VAS/KDR/Hurty/Przyjęcia/Uzupełnienia` → [24, …]
-   - `ECOM PACK` → [52]; `Zwroty Retail IN/OUT` → [7, 21, 27] / [22, 54]
+6. **`_MANUAL_MAP`** — ręczne mapowania dla znanych literówek i agregatów
 
-**Wynik:** 75/78 aktywności planu dopasowanych (96%). Bez grupy: `SKU do przyjęcia`, `Struktura`, `Suma do Przyjęcia` (metryki agregatowe).
+**Wynik:** 75/78 aktywności planu dopasowanych (96%). Bez grupy: `SKU do przyjęcia`, `Struktura`, `Suma do Przyjęcia`.
 
 ### 7.4 Widok macierzy procesowej (`/pracownicy/macierz-procesowa/`)
 
 Tryby (`?tryb=`):
-- `mapowanie` (domyślny) — tabela: aktywność DB × grupy procesowe, kolor komórki = czy czynnosc istnieje w DB
-- `ranking` — ranking pracowników per grupa procesowa (avg ocen z czynności grupy)
+- `mapowanie` (domyślny) — tabela: aktywność DB × grupy procesowe
+- `ranking` — ranking pracowników per grupa procesowa
 
 ---
 
 ## 8. System modali — wyniki_przydzialu.html
 
-Strona `/pracownicy/plany/<pk>/wyniki/` zawiera jeden modal Bootstrap 5 (`#aktModal`) obsługiwany przez trzy typy triggerów:
-
 | Trigger | Data | Zawartość modalu |
 |---|---|---|
-| `.akt-modal-trigger` (nagłówek aktywności) | `data-akt-nazwa` | Grupy procesowe + czynności (✓ zielona = jest w DB) + pracownicy z oceną |
-| `.dzial-modal-trigger` (badge działu) | `data-dzial-nazwa` | Wszystkie grupy procesowe działu (union po aktywnościach) |
-| `.prac-modal-trigger` (karta pracownika) | `data-prac-pk` | Top 4 kompetencje pracownika + jego ranking w grupach procesowych |
+| `.akt-modal-trigger` | `data-akt-nazwa` | Grupy procesowe + czynności + pracownicy z oceną |
+| `.dzial-modal-trigger` | `data-dzial-nazwa` | Wszystkie grupy procesowe działu |
+| `.prac-modal-trigger` | `data-prac-pk` | Top 4 kompetencje + ranking grup procesowych |
 
-Dane JSON osadzone w szablonie (blok `extra_js`):
-- `MODAL_DATA` — `{nazwa_aktywności: {groups: [...], workers: [...]}}`
-- `WORKER_DATA` — `{pk: {imie, nazwisko, zmiana_grupa, wynik, top_komp, group_rankings}}`
-- `DZIAL_DATA` — `{nazwa_działu: {groups: [...]}}`
+Dane JSON osadzone w szablonie: `MODAL_DATA`, `WORKER_DATA`, `DZIAL_DATA` (via `|safe`).
 
-### 8.1 Kolorowanie pracowników APT
-
-Pracownicy z `apt=True` wyświetlani z `background-color:#fefce8` (inline style). Bootstrap `bg-warning-subtle` nie jest używany — w trybie ciemnym renderuje jako ciemnobrązowy.
+**APT workers** wyświetlani z `background-color:#fefce8` (inline). Bootstrap `bg-warning-subtle` nie jest używany — w trybie ciemnym renderuje jako ciemnobrązowy.
 
 ---
 
 ## 9. Routing URL
 
 ```
-/pracownicy/macierz-procesowa/                  → macierz procesowa (tryb=mapowanie|ranking)
-
 /                                               → redirect do /konta/dashboard/
 /admin/                                         → panel administracyjny Django
 
@@ -593,6 +692,7 @@ Pracownicy z `apt=True` wyświetlani z `background-color:#fefce8` (inline style)
 /pracownicy/plany/<pk>/usun/                    → usuń plan (POST)
 /pracownicy/plany/<pk>/przydziel/               → uruchom przydział (POST)
 /pracownicy/plany/<pk>/wyniki/                  → wyniki przydziału (GET)
+/pracownicy/macierz-procesowa/                  → macierz procesowa
 
 /import/plan-zmianowy/                          → import planu zmianowego
 /import/pracownicy/                             → import pracowników
@@ -627,36 +727,15 @@ ALLOWED_HOSTS=localhost,127.0.0.1
 FIELD_ENCRYPTION_KEY=<klucz-fernet-base64>
 ```
 
-### Generowanie kluczy
-
-```python
-from cryptography.fernet import Fernet
-print(Fernet.generate_key().decode())          # FIELD_ENCRYPTION_KEY
-
-from django.core.management.utils import get_random_secret_key
-print(get_random_secret_key())                 # SECRET_KEY
-```
-
 ---
 
 ## 11. Uruchomienie projektu
 
-### Wymagania
-
-- Python 3.10+
-- Windows (PDF korzysta z `C:/Windows/Fonts/arial.ttf`)
-- Środowisko wirtualne (`myvenv`)
-
-### Instalacja
-
 ```bash
-# Aktywacja venv (Windows, PowerShell) — lokalne .venv w projekcie
+# Aktywacja venv (Windows, PowerShell)
 .venv\Scripts\Activate.ps1
 
 pip install -r requirements.txt
-
-# Uzupełnij .env (sekcja 8)
-
 python manage.py migrate
 python manage.py createsuperuser
 python manage.py runserver
@@ -664,13 +743,11 @@ python manage.py runserver
 
 Aplikacja: `http://127.0.0.1:8000/`
 
-Katalog `tmp/` tworzony automatycznie przez `_tmp_dir()`.
-
 ---
 
 ## 12. Format plików do importu
 
-### 10.1 Plan dzienny — `Plan_dzienny_NEW.xlsx`
+### 12.1 Plan dzienny — `Plan_dzienny_NEW.xlsx`
 
 | Kolumna | Indeks (0-based) | Zawartość |
 |---|---|---|
@@ -683,38 +760,27 @@ Katalog `tmp/` tworzony automatycznie przez `_tmp_dir()`.
 
 ---
 
-### 10.2 Macierz kompetencji — `KOMPETENCJE_PRACOWNIKÓW_ACT_NEW.xlsx`
+### 12.2 Macierz kompetencji — `KOMPETENCJE_PRACOWNIKÓW_ACT_NEW.xlsx`
 
-- Wiersze 3–5 (1-indexed): 3-poziomowy nagłówek (dział / poddział / aktywność), scalone komórki → forward-fill
-- Wiersz 6: etykiety kolumn pracownika (A–N, indeksy 0–13)
-- Kolumny 0–13: dane pracownika (indeks 11 = `zmiana_grupa`)
+- Kolumna 0: `departament` (np. `FF`, `IN`, `OB.`, `APT 1`)
+- Kolumna 11: `zmiana_grupa`
 - Kolumny 14+: aktywności, wartość = ocena (tylko > 0 zapisywana)
 - Pomijane: kolumny z `'prasa'` w nazwie działu
 
 ---
 
-### 10.3 Struktura i absencje — `Struktura___Grafik___Absencje_NEW.xlsx`
+### 12.3 Struktura i absencje — `Struktura___Grafik___Absencje_NEW.xlsx`
 
 - Arkusze: `Struktura IB`, `Struktura OB`, `Struktura FF`, `Struktura PR`, `Struktura ZW`
-- Wiersz 6 = nagłówki (`Nazwisko`, `Imię`, `Zmiana grupa`, `Zmiana`, daty absencji…)
-- Wiersz 7+ = dane pracowników
+- Wiersz 6 = nagłówki, wiersz 7+ = dane pracowników
 - Kolumny z datą `DD.MM.YYYY` w nagłówku → `AbsencjaPracownika`
-- Typy absencji z arkusza `Listy Rozwijane`, kolumna B
+- Nazwa arkusza zapisywana w `Pracownik.arkusz`
 
 ---
 
-### 10.4 Pracownicy APT — `PracownicyAPT*.xlsx`
+### 12.4 Pracownicy APT — `PracownicyAPT*.xlsx`
 
-Arkusz `PracownicyAPT01`:
-
-| Indeks (0-based) | Zawartość |
-|---|---|
-| 0 | Imię |
-| 1 | Nazwisko |
-| 7 | Nazwa agencji |
-| 11 | Płeć |
-| 12 | Grupa |
-| 2,3,4,5,6,8,9,10,13–18 | Oceny → kolumny APT 1–14 |
+Arkusz `PracownicyAPT01`. Kolumny 2,3,4,5,6,8,9,10,13–18 → oceny dla kolumn APT 1–14.
 
 ---
 
@@ -722,11 +788,12 @@ Arkusz `PracownicyAPT01`:
 
 | Kwestia | Status |
 |---|---|
-| Obsada stanowisk w `/stanowiska/` i `/przydzialy/` | Stub (0) — stary model `PlanZmiany` usunięty, integracja z nowym systemem nie zaimplementowana |
-| Raport Excel (`/raporty/obsada/excel/`) | Może wymagać aktualizacji pod nowy schemat modeli |
-| 3 aktywności bez grupy procesowej | `SKU do przyjęcia`, `Struktura`, `Suma do Przyjęcia` — metryki agregatowe, brak odpowiedniej grupy w macierzy |
+| Obsada stanowisk w `/stanowiska/` i `/przydzialy/` | Stub (0) — stary model `PlanZmiany` usunięty |
+| Raport Excel (`/raporty/obsada/excel/`) | Może wymagać aktualizacji pod nowy schemat |
+| 3 aktywności bez grupy procesowej | `SKU do przyjęcia`, `Struktura`, `Suma do Przyjęcia` — metryki agregatowe |
 | Absencje dla planów bez `data_planu` | Nie są sprawdzane — flaga `nieobecny` zawsze `False` |
+| Zmiana D — brak danych godzinowych z pliku | Aktywności Zmiany D nie mają zapotrzebowania godzinowego w standardowym formacie planu; tabela godzinowa wyświetla się dynamicznie z dostępnych danych |
 
 ---
 
-*Dokumentacja zaktualizowana: 2026-07-11 | System Magazynowy v2.2*
+*Dokumentacja zaktualizowana: 2026-07-14 | System Magazynowy v2.3*
