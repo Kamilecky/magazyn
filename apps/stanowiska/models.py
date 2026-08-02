@@ -1,5 +1,6 @@
 from django.db import models
 
+# Skala ocen 1–5 używana dla fizycznych parametrów stanowiska
 POZIOM_CHOICES = [
     (1, 'Bardzo niski'),
     (2, 'Niski'),
@@ -8,6 +9,7 @@ POZIOM_CHOICES = [
     (5, 'Bardzo wysoki'),
 ]
 
+# Zakresy dźwigania w kilogramach — wyświetlane w tooltipach kart pracowników
 DZWIGANIE_CHOICES = [
     ('0-5', '0–5 kg'),
     ('6-10', '6–10 kg'),
@@ -17,6 +19,7 @@ DZWIGANIE_CHOICES = [
 ]
 
 
+# Stanowisko magazynowe z opisem wymagań fizycznych i pojemnością obsady
 class Stanowisko(models.Model):
     nazwa = models.CharField(max_length=200, verbose_name='Nazwa')
     opis = models.TextField(blank=True, verbose_name='Opis')
@@ -24,9 +27,10 @@ class Stanowisko(models.Model):
     praca_stojaca = models.BooleanField(default=False, verbose_name='Praca stojąca')
     praca_przy_monitorze = models.BooleanField(default=False, verbose_name='Praca przy monitorze')
     wymaga_komputera = models.BooleanField(default=False, verbose_name='Wymaga komputera')
+    # Maksymalna liczba pracowników, którą można przypisać do tego stanowiska
     max_pracownikow = models.IntegerField(default=1, verbose_name='Maks. pracowników')
     aktywne = models.BooleanField(default=True, verbose_name='Aktywne')
-    # Pola do tooltipów
+    # Pola do tooltipów — wyświetlane na hover na kartach listy pracowników
     zakres_dzwigania = models.CharField(
         max_length=10, choices=DZWIGANIE_CHOICES, default='0-5', verbose_name='Zakres dźwigania'
     )
@@ -51,5 +55,6 @@ class Stanowisko(models.Model):
     def __str__(self):
         return self.nazwa
 
+    # Zlicza aktywne przydziały do tego stanowiska (używane w widokach do paska obsady)
     def aktualna_obsada(self):
         return self.przydzia_set.filter(aktywny=True).count()

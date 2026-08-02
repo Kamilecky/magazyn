@@ -4,9 +4,11 @@ from pathlib import Path
 from django.core.management.base import BaseCommand
 from django.conf import settings
 
+# Domyślna liczba godzin po której plik tymczasowy uznawany jest za przeterminowany
 _DEFAULT_AGE_HOURS = 24
 
 
+# Komenda Django wywoływana z crona lub ręcznie: python manage.py cleanup_tmp_imports
 class Command(BaseCommand):
     help = (
         'Usuwa pliki tymczasowe importu (tmp/*.json) starsze niż N godzin. '
@@ -14,6 +16,7 @@ class Command(BaseCommand):
         '0 3 * * * /path/to/venv/bin/python manage.py cleanup_tmp_imports'
     )
 
+    # Definiuje opcjonalne parametry wiersza poleceń
     def add_arguments(self, parser):
         parser.add_argument(
             '--hours',
@@ -32,16 +35,19 @@ class Command(BaseCommand):
         dry_run = options['dry_run']
         tmp_dir = Path(settings.BASE_DIR) / 'tmp'
 
+        # Katalog tmp/ tworzony dynamicznie przy pierwszym imporcie — może nie istnieć
         if not tmp_dir.exists():
             self.stdout.write('Katalog tmp/ nie istnieje — nic do zrobienia.')
             return
 
+        # Próg czasowy: pliki zmodyfikowane przed tą chwilą zostaną usunięte
         cutoff = time.time() - hours * 3600
         removed = skipped = 0
 
         for f in tmp_dir.glob('*.json'):
             if f.stat().st_mtime < cutoff:
                 if dry_run:
+                    # Tryb podglądu — tylko wypisz co zostałoby usunięte
                     self.stdout.write(f'[dry-run] usunąłbym: {f.name}')
                 else:
                     f.unlink()

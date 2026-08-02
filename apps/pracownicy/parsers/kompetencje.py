@@ -16,11 +16,15 @@ Kolumny A–N (0–13) mapowane na pola Pracownik:
 from datetime import date, datetime
 import openpyxl
 
+# Etykiety działów Prasa w różnych wariantach pisowni — kolumny z prasa są pomijane
 PRASA_ETYKIETY = {'prasa', 'PRASA', 'Prasa'}
 
-PIERWSZE_KOLUMNY = 14  # kolumny A–N (0–13) to dane pracownika
+# Pierwsze 14 kolumn (A–N) to dane pracownika; od kolumny O zaczynają się wyniki kompetencji
+PIERWSZE_KOLUMNY = 14
 
 
+# Wypełnia brakujące wartości w scalonej komórce — kopiuje ostatnią niepustą wartość w prawo
+# Potrzebne bo openpyxl zwraca None dla scalonych komórek nie będących komórką główną
 def _forward_fill(row: tuple) -> list:
     result = list(row)
     last = None
@@ -34,12 +38,14 @@ def _forward_fill(row: tuple) -> list:
     return result
 
 
+# Bezpieczna konwersja wartości komórki na string; None → pusty string
 def _safe_str(val) -> str:
     if val is None:
         return ''
     return str(val).strip()
 
 
+# Parsuje datę z różnych formatów (datetime z Excel, ISO, polskie dd.mm.yyyy)
 def _parse_date(val) -> str | None:
     if val is None:
         return None
@@ -62,6 +68,7 @@ def parsuj_kompetencje(plik) -> tuple[list[dict], dict, list[str]]:
     """
     wb = openpyxl.load_workbook(plik, data_only=True)
 
+    # Preferuje arkusz "Wynik finalny"; fallback na wszystkie arkusze (stary format pliku)
     if 'Wynik finalny' in wb.sheetnames:
         sheets = [wb['Wynik finalny']]
     else:
@@ -71,6 +78,7 @@ def parsuj_kompetencje(plik) -> tuple[list[dict], dict, list[str]]:
     all_kompetencje: dict[tuple, list] = {}
     ostrzezenia: list[str] = []
 
+    # Parsuj każdy arkusz osobno i scal wyniki (pracownik z wielu arkuszy → jeden rekord)
     for ws in sheets:
         p, k, o = _parsuj_arkusz(ws)
         for key, data in p.items():
@@ -88,12 +96,13 @@ def _parsuj_arkusz(ws) -> tuple[dict, dict, list]:
     if len(rows) < 7:
         return {}, {}, ['Arkusz za krótki (< 7 wierszy)']
 
-    # Wiersze nagłówkowe (0-indexed: 2, 3, 4 → specyfikacja 3, 4, 5)
+    # Wiersze 3–5 (0-indexed: 2–4) to trzypoziomowy nagłówek: Dział / Poddział / Aktywność
+    # forward_fill wypełnia scalone komórki (Excel scalone = None poza pierwszą komórką)
     row3 = _forward_fill(rows[2])   # Dział
     row4 = _forward_fill(rows[3])   # Poddział
     row5 = list(rows[4])            # Aktywność — zazwyczaj nie scalane
 
-    # Mapa kolumn kompetencji: col_idx → {'dzial': ..., 'aktywnosc': ...}
+    # Zbuduj mapę: numer_kolumny → {dzial, aktywnosc} dla kolumn kompetencji (od 14)
     col_map: dict[int, dict] = {}
     for i in range(PIERWSZE_KOLUMNY, max(len(row3), len(row5))):
         dzial = row3[i] if i < len(row3) else None
@@ -103,6 +112,7 @@ def _parsuj_arkusz(ws) -> tuple[dict, dict, list]:
         akt = str(akt_raw).strip()
         if not akt:
             continue
+        # Pomijamy kolumny z działu Prasa (nie wchodzą do macierzy kompetencji)
         if dzial and dzial.lower() == 'prasa':
             continue
         col_map[i] = {
@@ -113,11 +123,13 @@ def _parsuj_arkusz(ws) -> tuple[dict, dict, list]:
     pracownicy: dict[tuple, dict] = {}
     kompetencje: dict[tuple, list] = {}
 
-    for row in rows[6:]:  # dane od wiersza 7 (0-indexed: 6)
+    # Dane pracowników zaczynają się od wiersza 7 (0-indexed: 6)
+    for row in rows[6:]:
         if not row:
             continue
         nazwisko_raw = row[1] if len(row) > 1 else None
         imie_raw = row[2] if len(row) > 2 else None
+        # Pomiń wiersze bez nazwiska/imienia (wiersze sumaryczne, puste)
         if not nazwisko_raw or not imie_raw:
             continue
         nazwisko = _safe_str(nazwisko_raw)
@@ -125,6 +137,7 @@ def _parsuj_arkusz(ws) -> tuple[dict, dict, list]:
         if not nazwisko or not imie:
             continue
 
+        # Klucz deduplicacji: (nazwisko, imie) — ten sam pracownik w różnych arkuszach
         key = (nazwisko, imie)
         if key not in pracownicy:
             pracownicy[key] = {
@@ -143,6 +156,7 @@ def _parsuj_arkusz(ws) -> tuple[dict, dict, list]:
             }
             kompetencje[key] = []
 
+        # Odczytaj wyniki kompetencji dla każdej zmapowanej kolumny
         for ci, col_info in col_map.items():
             if ci >= len(row):
                 continue
@@ -153,6 +167,7 @@ def _parsuj_arkusz(ws) -> tuple[dict, dict, list]:
                 wynik = float(val)
             except (TypeError, ValueError):
                 continue
+            # Zapisujemy tylko wyniki > 0 (brak kompetencji = brak wiersza w DB)
             if wynik > 0:
                 kompetencje[key].append({
                     'aktywnosc_nazwa': col_info['aktywnosc'],

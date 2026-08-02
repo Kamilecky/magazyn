@@ -3,6 +3,7 @@ from django.shortcuts import render, redirect
 from django.contrib import messages
 
 
+# Odczyt roli z powiązanego profilu; None gdy profil nie istnieje (nowo utworzone konto)
 def _get_rola(user):
     try:
         return user.profil.rola
@@ -10,6 +11,7 @@ def _get_rola(user):
         return None
 
 
+# Generuje odpowiedź HTTP 403 z komunikatem błędu (nie przekierowanie)
 def _brak_dostepu(request, komunikat):
     messages.error(request, komunikat)
     return render(request, 'konta/brak_dostepu.html', {'komunikat': komunikat}, status=403)
@@ -23,8 +25,10 @@ def wymaga_roli(*role):
     def decorator(view_func):
         @wraps(view_func)
         def wrapper(request, *args, **kwargs):
+            # Niezalogowani trafiają na stronę logowania
             if not request.user.is_authenticated:
                 return redirect('login')
+            # Zalogowani bez wymaganej roli dostają stronę 403
             if _get_rola(request.user) not in role:
                 return _brak_dostepu(
                     request,
@@ -35,6 +39,7 @@ def wymaga_roli(*role):
     return decorator
 
 
+# Dostęp dla roli hr oraz admin
 def tylko_hr(view_func):
     @wraps(view_func)
     def wrapper(request, *args, **kwargs):
@@ -47,6 +52,7 @@ def tylko_hr(view_func):
     return wrapper
 
 
+# Dostęp dla roli kierownik oraz admin
 def tylko_kierownik(view_func):
     @wraps(view_func)
     def wrapper(request, *args, **kwargs):
@@ -59,6 +65,7 @@ def tylko_kierownik(view_func):
     return wrapper
 
 
+# Dostęp dla hr, kierownik oraz admin — wyklucza tylko niezalogowanych i nieznane role
 def hr_lub_kierownik(view_func):
     @wraps(view_func)
     def wrapper(request, *args, **kwargs):

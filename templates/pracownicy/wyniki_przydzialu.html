@@ -47,6 +47,10 @@
             style="font-size:.7rem{% if lit == 'D' %};background-color:#7c3aed{% endif %}">{{ lit }}</span>
           {% endif %}{% endwith %}
         </div>
+        {% if zmiana_int == 0 %}
+        <div class="fs-4 fw-bold text-secondary">{{ zd.total_fillers }}</div>
+        <div class="small text-muted">bez przypisanej zmiany</div>
+        {% else %}
         <div class="fs-4 fw-bold text-success">{{ zd.total_pracownicy }}</div>
         <div class="small text-muted">
           przypisanych
@@ -54,6 +58,7 @@
           <span class="text-secondary">· {{ zd.total_fillers }} bez aktywności</span>
           {% endif %}
         </div>
+        {% endif %}
       </div>
     </div>
   </div>
@@ -68,8 +73,8 @@
     <button class="nav-link {% if forloop.first %}active{% endif %}"
             id="tab-zm{{ zmiana_int }}" data-bs-toggle="tab"
             data-bs-target="#zm{{ zmiana_int }}" type="button" role="tab">
-      <i class="bi bi-{% if zmiana_int == 1 %}sunrise{% elif zmiana_int == 2 %}sun{% elif zmiana_int == 4 %}layers{% else %}moon-stars{% endif %} me-1"></i>
-      Zm. {% if zmiana_int == 4 %}D{% else %}{{ zmiana_int }}{% endif %}
+      <i class="bi bi-{% if zmiana_int == 1 %}sunrise{% elif zmiana_int == 2 %}sun{% elif zmiana_int == 4 %}layers{% elif zmiana_int == 0 %}person-x{% else %}moon-stars{% endif %} me-1"></i>
+      {% if zmiana_int == 0 %}Bez zmiany{% elif zmiana_int == 4 %}Zm. D{% else %}Zm. {{ zmiana_int }}{% endif %}
       {% with lit=litera_map|get_item:zmiana_int %}{% if lit %}
       <span class="badge ms-1
         {% if lit == 'A' %}bg-success{% elif lit == 'B' %}bg-primary{% elif lit == 'D' %}text-white{% else %}bg-danger{% endif %}"

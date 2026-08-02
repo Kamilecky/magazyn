@@ -15,7 +15,8 @@ Wartości ocen w pliku testowym są puste — plik jest szablonem.
 """
 import openpyxl
 
-# Kolumna → numer oceny (1-14)
+# Mapowanie: indeks_kolumny → numer_oceny (1–14)
+# Oceny są rozrzucone nieciągłe — kolumny 7, 11, 12 to dane pracownika, nie oceny
 SCORE_COLS: dict[int, int] = {
     2: 1, 3: 2, 4: 3, 5: 4, 6: 5,
     8: 6, 9: 7, 10: 8,
@@ -30,6 +31,7 @@ def parsuj_pracownikow_apt(plik) -> tuple[list[dict], list[str]]:
     """
     wb = openpyxl.load_workbook(plik, data_only=True)
 
+    # Preferuje arkusz "PracownicyAPT01"; fallback na aktywny arkusz
     ws = wb['PracownicyAPT01'] if 'PracownicyAPT01' in wb.sheetnames else wb.active
 
     rows = list(ws.iter_rows(values_only=True))
@@ -39,16 +41,19 @@ def parsuj_pracownikow_apt(plik) -> tuple[list[dict], list[str]]:
     if not rows:
         return [], ['Pusty arkusz']
 
-    for row in rows[1:]:  # pomiń wiersz nagłówkowy
+    # Pomiń wiersz nagłówkowy (wiersz 1); dane od wiersza 2 (0-indexed: 1)
+    for row in rows[1:]:
         if not row:
             continue
         nazwisko_raw = row[0] if len(row) > 0 else None
         imie_raw = row[1] if len(row) > 1 else None
+        # Pomiń całkowicie puste wiersze (bez nazwiska i imienia)
         if not nazwisko_raw and not imie_raw:
             continue
 
         nazwisko = str(nazwisko_raw).strip() if nazwisko_raw else ''
         imie = str(imie_raw).strip() if imie_raw else ''
+        # Pracownik musi mieć przynajmniej nazwisko
         if not nazwisko:
             continue
 
@@ -56,6 +61,7 @@ def parsuj_pracownikow_apt(plik) -> tuple[list[dict], list[str]]:
         plec_raw = row[11] if len(row) > 11 else None
         grupa_raw = row[12] if len(row) > 12 else None
 
+        # Odczytaj oceny ze zmapowanych kolumn — pomijaj puste i nieparsowalne
         oceny: dict[str, float | None] = {}
         for ci, numer in SCORE_COLS.items():
             if ci < len(row) and row[ci] is not None:

@@ -35,23 +35,33 @@ from .parsers.pracownicy_apt import parsuj_pracownikow_apt
 from .parsers.struktura import parsuj_strukture
 from .grupy_procesowe import GRUPY_PROCESOWE as _GP
 
-# ── Fuzzy-matching aktywności → grupy procesowe (module-level) ────────────────
+# ── Fuzzy-matching aktywności → grupy procesowe (moduł globalny) ──────────────
+# Kompilowane raz przy starcie serwera, nie przy każdym żądaniu
 import re as _re
-_ws_re = _re.compile(r'\s+')
-_paren_sp_re = _re.compile(r'\s+([)\]])')
-_punct_re = _re.compile(r'[^a-ząćęłńóśźż0-9\s]')
+_ws_re = _re.compile(r'\s+')           # dopasowuje wielokrotne spacje
+_paren_sp_re = _re.compile(r'\s+([)\]])') # dopasowuje spację przed ) lub ]
+_punct_re = _re.compile(r'[^a-ząćęłńóśźż0-9\s]')  # dopasowuje znaki interpunkcyjne
 
 
+# Normalizuje string: małe litery, pojedyncze spacje, usuwa spację przed nawiasami
 def _nrm(s: str) -> str:
     return _paren_sp_re.sub(r'\1', _ws_re.sub(' ', s.strip().lower()))
 
 
+# Wyciąga zbiór słów (min 3 znaki) po normalizacji i usunięciu interpunkcji
+# Używane do porównania zbiorów słów zamiast dopasowania podciągu
 def _words(s: str) -> set:
     return set(w for w in _punct_re.sub(' ', _nrm(s)).split() if len(w) >= 3)
 
 
+# Słownik: numer_grupy → obiekt grupy procesowej (szybkie wyszukiwanie po numerze)
 _GP_BY_NR: dict[int, dict] = {g['nr']: g for g in _GP}
+
+# Słownik: nazwa_czynności → grupa procesowa (dla dokładnego dopasowania nazwy)
 _akt_to_group_exact: dict[str, dict] = {c: g for g in _GP for c in g['czynnosci']}
+
+# Ręczne mapowanie dla aktywności których fuzzy-matching nie obejmuje automatycznie
+# Klucz: znormalizowana nazwa aktywności z planu, wartość: lista numerów grup procesowych
 _MANUAL_MAP: dict[str, list[int]] = {
     _nrm('Konsolidacje + zasileniacC(P3/P4/P7)/R1/R2'): [11, 49],
     _nrm('Retail OUT'): [54],
@@ -68,11 +78,19 @@ _MANUAL_MAP: dict[str, list[int]] = {
 
 
 def _find_all_groups(akt_nazwa: str) -> list[dict]:
-    """Fuzzy-match nazwy aktywności planu do grup procesowych z macierzy."""
+    """Fuzzy-match nazwy aktywności planu do grup procesowych z macierzy.
+
+    Kolejność dopasowania (fallback chain):
+    1. Dokładne dopasowanie nazwy czynności
+    2. Podciąg nazwy grupy (min 3 znaki) lub podzbiór słów grupy (min 2 słowa)
+    3. Podciąg nazwy czynności (min 4 znaki) lub podzbiór słów czynności
+    4. Ręczna mapa _MANUAL_MAP dla znanych wyjątków
+    """
     norm = _nrm(akt_nazwa)
     result: list[dict] = []
     seen_nrs: set[int] = set()
 
+    # Krok 1: dokładne dopasowanie nazwy czynności
     exact = _akt_to_group_exact.get(akt_nazwa)
     if exact:
         return [exact]
@@ -85,11 +103,14 @@ def _find_all_groups(akt_nazwa: str) -> list[dict]:
             continue
         g_norm = _nrm(g['nazwa'])
         g_words = _words(g['nazwa'])
+        # Krok 2a: podciąg nazwy grupy (np. "Batch" w "Batch Mezz P3/P4/P7")
         if len(norm) >= 3 and (norm in g_norm or g_norm in norm):
             result.append(g); seen_nrs.add(g['nr']); continue
+        # Krok 2b: podzbiór słów (np. {"Sort", "PTS"} ⊆ {"Sort", "PTS", "PTL"})
         if (len(norm_words) >= 2 and len(g_words) >= 2
                 and (norm_words.issubset(g_words) or g_words.issubset(norm_words))):
             result.append(g); seen_nrs.add(g['nr']); continue
+        # Krok 3: sprawdź poszczególne czynności w grupie
         for c in g['czynnosci']:
             c_norm = _nrm(c)
             c_words = _words(c)
@@ -98,6 +119,7 @@ def _find_all_groups(akt_nazwa: str) -> list[dict]:
             if (len(norm_words) >= 2 and len(c_words) >= 2
                     and (norm_words.issubset(c_words) or c_words.issubset(norm_words))):
                 result.append(g); seen_nrs.add(g['nr']); break
+    # Krok 4: ręczna mapa dla przypadków których algorytm nie obsługuje
     if not result:
         for nr in _MANUAL_MAP.get(norm, []):
             mg = _GP_BY_NR.get(nr)
@@ -108,12 +130,14 @@ def _find_all_groups(akt_nazwa: str) -> list[dict]:
 
 # ── Katalog tymczasowy dla plików podglądu importu ────────────────────────────
 
+# Zwraca ścieżkę do katalogu tmp/ i tworzy go jeśli nie istnieje
 def _tmp_dir() -> Path:
     d = Path(settings.BASE_DIR) / 'tmp'
     d.mkdir(exist_ok=True)
     return d
 
 
+# Oblicza zakres numerów stron do wyświetlenia w paginacji (±3 od bieżącej strony)
 def _page_range(page_obj, paginator):
     current = page_obj.number
     total = paginator.num_pages
@@ -124,23 +148,28 @@ def _page_range(page_obj, paginator):
 
 # ── Pracownicy ─────────────────────────────────────────────────────────────────
 
+# Kolejność zakładek arkuszy na liście pracowników
 _ARKUSZ_KOLEJNOSC = [
     'Struktura IN', 'Struktura IB', 'Struktura OB', 'Struktura FF', 'Struktura ZW', 'Struktura PR',
 ]
+# Skrótowe etykiety zakładek (wyświetlane w UI)
 _ARKUSZ_SKROT = {
     'Struktura IN': 'IN', 'Struktura IB': 'IB', 'Struktura OB': 'OB',
     'Struktura FF': 'FF', 'Struktura ZW': 'ZW', 'Struktura PR': 'PR',
 }
 
 
+# Lista pracowników z filtrowaniem, wyszukiwaniem i paginacją (50 na stronę)
 @login_required
 def lista(request):
-    q         = request.GET.get('q', '').strip()
-    arkusz_q  = request.GET.get('arkusz', '').strip()
-    nieobecni = request.GET.get('nieobecni', '') == '1'
-    show_etat = request.GET.get('show_etat', '') == '1'
-    show_apt  = request.GET.get('show_apt',  '') == '1'
+    # Parametry wyszukiwania i filtrowania z URL
+    q         = request.GET.get('q', '').strip()        # szukaj po imieniu/nazwisku
+    arkusz_q  = request.GET.get('arkusz', '').strip()   # filtr zakładki arkusza
+    nieobecni = request.GET.get('nieobecni', '') == '1' # pokaż tylko nieobecnych
+    show_etat = request.GET.get('show_etat', '') == '1' # filtr: tylko etatowi
+    show_apt  = request.GET.get('show_apt',  '') == '1' # filtr: tylko APT
 
+    # Filtry kolumnowe (zaawansowane wyszukiwanie w tabeli)
     f_nr         = request.GET.get('f_nr', '').strip()
     f_nazwisko   = request.GET.get('f_nazwisko', '').strip()
     f_imie       = request.GET.get('f_imie', '').strip()
@@ -151,16 +180,20 @@ def lista(request):
     f_zmiana_gr  = request.GET.get('f_zmiana_gr', '').strip()
     f_przelozony = request.GET.get('f_przelozony', '').strip()
 
+    # Główne zapytanie z anotacjami i prefetch — zoptymalizowane aby unikać N+1 zapytań
     qs = (Pracownik.objects
           .annotate(
               liczba_kompetencji=Count('kompetencje', distinct=True),
               liczba_absencji=Count('absencje', distinct=True),
+              # Długość nr_ewidencyjny do sortowania (NULL-y na końcu, potem rosnąco po długości)
               nr_len=Length('nr_ewidencyjny'),
           )
           .prefetch_related(
+              # absencje_lista: wszystkie absencje pracownika pobrane w jednym zapytaniu
               Prefetch('absencje',
                        queryset=AbsencjaPracownika.objects.order_by('data'),
                        to_attr='absencje_lista'),
+              # kompetencje_lista: top kompetencje posortowane malejąco po wyniku
               Prefetch('kompetencje',
                        queryset=KompetencjaPracownika.objects
                            .filter(wynik__gt=0)
@@ -174,13 +207,16 @@ def lista(request):
               'nazwisko', 'imie',
           ))
 
+    # Filtr tekstowy: szukaj w imieniu LUB nazwisku (case-insensitive)
     if q:
         qs = qs.filter(Q(nazwisko__icontains=q) | Q(imie__icontains=q))
     if arkusz_q:
         qs = qs.filter(arkusz=arkusz_q)
+    # Filtr nieobecnych: tylko pracownicy z co najmniej jedną absencją
     if nieobecni:
         qs = qs.filter(liczba_absencji__gt=0)
 
+    # Filtry kolumnowe — każdy filtr zawęża wyniki (logiczne AND)
     if f_nr:         qs = qs.filter(nr_ewidencyjny__icontains=f_nr)
     if f_nazwisko:   qs = qs.filter(nazwisko__icontains=f_nazwisko)
     if f_imie:       qs = qs.filter(imie__icontains=f_imie)
@@ -191,13 +227,13 @@ def lista(request):
     if f_zmiana_gr:  qs = qs.filter(zmiana_grupa__icontains=f_zmiana_gr)
     if f_przelozony: qs = qs.filter(przelozony__icontains=f_przelozony)
 
-    # Filtr przynależności (zaznaczony tylko jeden checkbox → filtruj)
+    # Filtr przynależności: APT mają departament zaczynający się od "APT"
     if show_etat and not show_apt:
         qs = qs.exclude(departament__iregex=r'^APT')
     elif show_apt and not show_etat:
         qs = qs.filter(departament__iregex=r'^APT')
 
-    # Zakładki arkuszy z liczbą pracowników
+    # Oblicz liczby pracowników per arkusz dla zakładek filtrowania
     base_qs = Pracownik.objects
     if q:
         base_qs = base_qs.filter(Q(nazwisko__icontains=q) | Q(imie__icontains=q))
@@ -208,6 +244,7 @@ def lista(request):
         row['arkusz']: row['n']
         for row in base_qs.values('arkusz').annotate(n=Count('id'))
     }
+    # Zbuduj listę zakładek w określonej kolejności (IB/OB/FF/ZW/PR)
     arkusze_tabs = []
     for ark in _ARKUSZ_KOLEJNOSC:
         if ark in arkusze_counts:
@@ -216,11 +253,12 @@ def lista(request):
                 'skrot': _ARKUSZ_SKROT.get(ark, ark),
                 'count': arkusze_counts[ark],
             })
-    # Pozostałe arkusze (inne niż Struktura IB/OB/FF/ZW/PR)
+    # Pozostałe arkusze (spoza standardowej kolejności) na końcu
     for ark, cnt in arkusze_counts.items():
         if ark not in _ARKUSZ_KOLEJNOSC:
             arkusze_tabs.append({'value': ark, 'skrot': ark or 'Inne', 'count': cnt})
 
+    # Zakoduj aktualne filtry jako parametry URL — do linków paginacji
     from urllib.parse import urlencode
     col_filters = {
         'f_nr': f_nr, 'f_nazwisko': f_nazwisko, 'f_imie': f_imie,
@@ -234,6 +272,7 @@ def lista(request):
     ] if v}
     filter_params = urlencode(_fp)
 
+    # Paginacja: 50 pracowników na stronę
     paginator = Paginator(qs, 50)
     page_obj = paginator.get_page(request.GET.get('page', 1))
     pr, pr_start, pr_end = _page_range(page_obj, paginator)
@@ -254,6 +293,7 @@ def lista(request):
     })
 
 
+# API endpoint: zwraca kompetencje pracownika jako JSON (używane przez modal w UI)
 @login_required
 def kompetencje_pracownika(request, pk):
     p = get_object_or_404(Pracownik, pk=pk)
@@ -272,6 +312,7 @@ def kompetencje_pracownika(request, pk):
     })
 
 
+# Usuwa pojedynczego pracownika — tylko admin; POST-only (GET jest ignorowany)
 @wymaga_roli('admin')
 def usun_pracownika(request, pk):
     if request.method == 'POST':
@@ -282,6 +323,7 @@ def usun_pracownika(request, pk):
     return redirect('pracownicy:lista')
 
 
+# Usuwa WSZYSTKICH pracowników z bazy — operacja destruktywna, tylko admin
 @wymaga_roli('admin')
 def usun_wszystkich(request):
     if request.method == 'POST':
@@ -293,13 +335,15 @@ def usun_wszystkich(request):
 
 # ── Macierz procesowa ─────────────────────────────────────────────────────────
 
+# Wyświetla macierz 57 grup procesowych z top-8 pracownikami i statystykami pokrycia
 @login_required
 def macierz_procesowa(request):
     from .grupy_procesowe import GRUPY_PROCESOWE
 
-    tryb = request.GET.get('tryb', 'ranking')  # 'ranking' | 'mapowanie'
+    # tryb='ranking' pokazuje top pracowników; tryb='mapowanie' pokazuje które czynności są w DB
+    tryb = request.GET.get('tryb', 'ranking')
 
-    # Wszystkie aktywności z DB (indeks po nazwie)
+    # Słownik wszystkich aktywności w DB: nazwa → pk (do sprawdzenia pokrycia)
     db_aktywnosci = {a.nazwa: a.pk for a in Aktywnosc.objects.only('pk', 'nazwa')}
 
     wynik_grup = []
@@ -313,6 +357,7 @@ def macierz_procesowa(request):
         matched_ids = []
         matched_names = []
         unmatched_names = []
+        # Sprawdź które czynności z grupy istnieją w bazie danych
         for nazwa in czynnosci_pdf:
             pk = db_aktywnosci.get(nazwa)
             if pk:
@@ -322,6 +367,7 @@ def macierz_procesowa(request):
             else:
                 unmatched_names.append(nazwa)
 
+        # Top 8 pracowników z najwyższą średnią kompetencją dla tej grupy
         top = []
         if matched_ids:
             top = list(
@@ -364,6 +410,7 @@ def macierz_procesowa(request):
 
 # ── Plany dzienne ──────────────────────────────────────────────────────────────
 
+# Lista wszystkich zaimportowanych planów dziennych z licznikami aktywności i rekordów
 @login_required
 def plany_lista(request):
     plany = (
@@ -372,12 +419,14 @@ def plany_lista(request):
             total_aktywnosci=Count('zapotrzebowania__aktywnosc', distinct=True),
             total_rekordow=Count('zapotrzebowania'),
         )
+        # select_related('przydzial') — sprawdza czy plan ma już obliczony przydział
         .select_related('przydzial')
         .order_by('-data_importu')
     )
     return render(request, 'pracownicy/plany_lista.html', {'plany': plany})
 
 
+# Usuwa plan dzienny wraz z jego przydziałem — tylko admin; POST-only
 @wymaga_roli('admin')
 def usun_plan(request, pk):
     if request.method == 'POST':
@@ -392,9 +441,10 @@ def usun_plan(request, pk):
 
 # ── Przydział pracowników do planu ────────────────────────────────────────────
 
+# Sektory priorytetowe — ich pracownicy są force-assignowani jeśli nie zostali przydzieleni
 _PRIORITY_DEPTS = frozenset({'IN', 'OB', 'FF', 'ZW', 'PR'})
 
-# Słowa kluczowe dla każdego kodu departamentu — dopasowywane do Aktywnosc.dzial z planu
+# Słowa kluczowe do dopasowania kodu departamentu na nazwę działu z planu (case-insensitive)
 _DEPT_KEYWORDS: dict[str, list[str]] = {
     'IN': ['in', 'ib', 'inbound', 'przej', 'odbi'],
     'OB': ['ob', 'outbound', 'ekspedy', 'wysy'],
@@ -404,15 +454,18 @@ _DEPT_KEYWORDS: dict[str, list[str]] = {
 }
 
 
+# Normalizacja string do porównań: małe litery, usunięcie spacji brzegowych
 def _norm(s: str) -> str:
     return s.strip().lower() if s else ''
 
 
+# Sprawdza czy dział pracownika pasuje do działu aktywności (dopasowanie podciągu w obu kierunkach)
 def _dzialy_match(dzial_p: str, dzial_a: str) -> bool:
     a, b = _norm(dzial_p), _norm(dzial_a)
     return bool(a and b and (a in b or b in a))
 
 
+# Sprawdza czy kod departamentu (IN/OB/FF/ZW/PR) odpowiada nazwie działu z planu
 def _dept_matches_akt(departament: str, dzial_a: str) -> bool:
     """Dopasuj kod departamentu (IN/OB/FF/ZW/PR) do nazwy działu z planu."""
     keywords = _DEPT_KEYWORDS.get(departament.strip().upper(), [])
@@ -420,6 +473,7 @@ def _dept_matches_akt(departament: str, dzial_a: str) -> bool:
     return bool(z and any(kw in z or z.startswith(kw) for kw in keywords))
 
 
+# Zwraca kod strefy dla nazwy działu z planu, lub '' jeśli brak dopasowania
 def _dept_for_dzial(dzial: str) -> str:
     """Zwróć kod strefy (IN/OB/FF/ZW/PR) dla nazwy działu z planu, lub '' jeśli brak."""
     z = _norm(dzial)
@@ -429,6 +483,7 @@ def _dept_for_dzial(dzial: str) -> str:
     return ''
 
 
+# Wyciąga skrót sektora z nazwy arkusza (np. "Struktura FF" → "FF")
 def _sektor(arkusz: str) -> str:
     """Wyciągnij skrót sektora z nazwy arkusza, np. 'Struktura FF' → 'FF'."""
     s = arkusz.strip()
@@ -438,6 +493,8 @@ def _sektor(arkusz: str) -> str:
     return ''
 
 
+# Sprawdza czy pracownik pasuje do aktywności przez dowolne z trzech kryteriów:
+# stanowisko == nazwa aktywności, dział pracownika ⊂ dział aktywności, kod departamentu pasuje
 def _pasuje_do_aktywnosci(p, akt_nazwa_norm: str, akt_dzial: str) -> bool:
     """True jeśli pracownik pasuje do aktywności przez dowolne kryterium."""
     return (
@@ -449,23 +506,25 @@ def _pasuje_do_aktywnosci(p, akt_nazwa_norm: str, akt_dzial: str) -> bool:
 
 def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
     """
-    Plan-driven assignment based on ZapotrzebowanieGodzinowe.
+    Algorytm przydziału pracowników do aktywności planu dziennego.
 
     Dla każdej (aktywność, zmiana) z planu:
       capacity = ceil(max godzinowego zapotrzebowania)
-    Kolejność wypełniania do capacity:
-      1. Pracownicy Struktura z pasującym stanowiskiem/działem/departamentem/kompetencją
-         — wewnątrz grupy: najpierw ci z oceną w grupie procesowej (malejąco), potem reszta
-      2. Pracownicy APT wg ocen
-    Priorytetowi bez dopasowania → force-assign do pierwszej aktywności z ich działu.
-    Wynik zawiera 'godziny': {godzina_str: liczba_wymagana} dla rozbicia godzinowego.
+
+    Dwie fazy przydziału (etatowi → APT):
+      Faza 1: dział-first — tier1 (pasujący dział/departament) → tier2 (powiązanie przez score/kompetencję)
+              w obu tierach sortowanie wg ocen z macierzy procesowej DESC
+      Faza 2: APT wypełniają pozostałą pojemność wg ocen
+
+    Priorytetowi (IN/OB/FF/ZW/PR) bez dopasowania → force-assign do pierwszej aktywności z ich działu.
+    Nieprzydzieleni → sekcja __fillers__ (bez przypisanej aktywności).
     """
-    # 1. Wczytaj zapotrzebowanie godzinowe dla planu
+    # 1. Wczytaj zapotrzebowanie godzinowe: (akt_pk, zmiana) → {godzina: liczba_osob}
     zap_qs = (ZapotrzebowanieGodzinowe.objects
               .filter(plan=plan)
               .select_related('aktywnosc'))
 
-    plan_godziny: dict[tuple, dict[int, float]] = {}   # (akt_pk, zmiana) → {h: osob}
+    plan_godziny: dict[tuple, dict[int, float]] = {}
     for zap in zap_qs:
         key = (zap.aktywnosc_id, zap.zmiana)
         plan_godziny.setdefault(key, {})[zap.godzina] = zap.liczba_osob
@@ -474,16 +533,17 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
         return {}
 
     akt_pks_in_plan = {k[0] for k in plan_godziny}
+    # Cache aktywności — unikamy wielokrotnych zapytań do DB podczas iteracji
     akt_cache = {a.pk: a for a in Aktywnosc.objects.filter(pk__in=akt_pks_in_plan)}
 
-    # 2. Pracownicy Struktura — wyłącz pracowników z departamentem APT* (to agencyjni)
+    # 2. Pracownicy etatowi — wyklucz APT (departament zaczynający się od "APT")
     pracownicy = [
         p for p in Pracownik.objects.all()
         if not p.departament.strip().upper().startswith('APT')
     ]
     pk_to_p = {p.pk: p for p in pracownicy}
 
-    # Zbiór PK pracowników nieobecnych w dniu planu
+    # Zbiór PKi pracowników nieobecnych w dniu planu (blokuje ich od przydziału)
     nieobecni_pks: set[int] = set()
     if plan.data_planu:
         nieobecni_pks = set(
@@ -492,24 +552,23 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
             .values_list('pracownik_id', flat=True)
         )
 
-    # Mapa kompetencji pracowników: pracownik_pk → set(aktywnosc_pk z wynikiem > 0)
+    # Mapa kompetencji: pracownik_pk → zbiór pk aktywności z wynikiem > 0
     komp_map: dict[int, set[int]] = {}
     for k in KompetencjaPracownika.objects.filter(aktywnosc_id__in=akt_pks_in_plan, wynik__gt=0):
         komp_map.setdefault(k.pracownik_id, set()).add(k.aktywnosc_id)
 
-    # --- Macierz procesowa: oceny pracowników wg grup procesowych ---
-    # Dla każdej aktywności z planu: fuzzy-match do grup procesowych,
-    # zbierz PKi wszystkich czynności z dopasowanych grup.
+    # --- Oblicz oceny pracowników przez macierz procesową ---
+    # Dla każdej aktywności z planu: fuzzy-match do grup procesowych
+    # worker_group_score[(worker_pk, plan_akt_pk)] = średnia ocena pracownika przez grupę
     _nazwa_to_pk = {a.nazwa: a.pk for a in Aktywnosc.objects.only('pk', 'nazwa')}
     akt_grupa_pks: dict[int, set[int]] = {}
     for akt_pk in akt_pks_in_plan:
         akt = akt_cache[akt_pk]
         groups = _find_all_groups(akt.nazwa)
+        # Zbierz PKi wszystkich czynności z dopasowanych grup procesowych
         group_czynnosci = [c for g in groups for c in g['czynnosci']]
         akt_grupa_pks[akt_pk] = {_nazwa_to_pk[n] for n in group_czynnosci if n in _nazwa_to_pk}
 
-    # Oblicz średnią ocenę pracownika dla każdej aktywności planu (przez grupę procesową)
-    # worker_group_score[(worker_pk, plan_akt_pk)] = avg wynik w grupie procesowej
     all_group_pks = set()
     for pks in akt_grupa_pks.values():
         all_group_pks.update(pks)
@@ -521,12 +580,12 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
                 .filter(aktywnosc_id__in=all_group_pks, wynik__gt=0)
                 .values('pracownik_id', 'aktywnosc_id')
                 .annotate(avg=_Avg('wynik')))
-        # indeks: aktywnosc_pk → set of plan_akt_pks które mają tę aktywność w grupie
+        # Odwrotny indeks: aktywnosc_pk → zbiór plan_akt_pks które ją zawierają
         group_pk_to_plan_akt: dict[int, set[int]] = {}
         for plan_akt_pk, group_pks in akt_grupa_pks.items():
             for gpk in group_pks:
                 group_pk_to_plan_akt.setdefault(gpk, set()).add(plan_akt_pk)
-        # Akumuluj sumy i liczby per (worker, plan_akt)
+        # Akumuluj sumy i liczby do obliczenia średniej per (worker, plan_akt)
         _sums: dict[tuple, float] = {}
         _cnts: dict[tuple, int] = {}
         for row in rows:
@@ -540,11 +599,12 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
         for key, s in _sums.items():
             worker_group_score[key] = s / _cnts[key]
 
-    # 3. Pracownicy APT + mapowanie ocen na aktywności
+    # 3. Pracownicy APT + mapowanie ocen na aktywności przez KolumnaAPT
     apt_pracownicy = list(PracownikAPT.objects.prefetch_related('oceny'))
     kolumna_map = {k.numer_kolumny: k.nazwa_dzialu for k in KolumnaAPT.objects.all()}
     akt_by_norm_nazwa = {_norm(a.nazwa): a for a in akt_cache.values()}
 
+    # comp_apt[(apt_pk, akt_pk)] = najwyższa ocena APT dla tej aktywności
     comp_apt: dict[tuple, float] = {}
     for apt in apt_pracownicy:
         for ocena in apt.oceny.all():
@@ -553,6 +613,7 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
             nazwa_dzialu = kolumna_map.get(ocena.numer_kolumny, '')
             if not nazwa_dzialu:
                 continue
+            # Dopasuj nazwę działu z kolumny APT do aktywności z planu
             matched = akt_by_norm_nazwa.get(_norm(nazwa_dzialu))
             if not matched:
                 for a in akt_cache.values():
@@ -566,16 +627,18 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
 
     result: dict = {}
 
+    # Zbiory globalnie przydzielonych — deduplicacja dla pracowników bez zmiana_grupy
     globally_assigned_prac: set[int] = set()
     globally_assigned_apt: set[int] = set()
-    globally_absent_shown: set[int] = set()  # absent workers already placed in some shift's fillers
+    globally_absent_shown: set[int] = set()  # nieobecni już umieszczeni w fillers jakiejś zmiany
 
     litera_map = KonfiguracjaZmian.pobierz().jako_slownik()
 
+    # Pętla przez 3 zmiany (I, II, III); zmiana D obsługiwana osobno po pętli
     for zmiana in (1, 2, 3):
         litera = litera_map[zmiana]
 
-        # Aktywności tej zmiany z pojemnością > 0; sortuj od największego zapotrzebowania
+        # Aktywności tej zmiany posortowane od największego zapotrzebowania
         shift_acts: list[tuple] = []   # (akt_pk, capacity, godziny_dict)
         for akt_pk in sorted(akt_pks_in_plan):
             g = plan_godziny.get((akt_pk, zmiana))
@@ -584,18 +647,24 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
             max_wymagane = max(g.values(), default=0.0)
             if max_wymagane <= 0:
                 continue
+            # Pojemność = sufit z maksymalnego zapotrzebowania godzinowego
             shift_acts.append((akt_pk, math.ceil(max_wymagane), g))
         shift_acts.sort(key=lambda x: -x[1])
 
+        # Sprawdza czy pracownik należy do tej zmiany.
+        # Priorytet: pole zmiana (A/B/C/D), fallback na pierwszą literę zmiana_grupa (A-1 → A).
         def _w_tej_zmianie(p) -> bool:
-            zg = p.zmiana_grupa.upper() if p.zmiana_grupa else ''
-            return zg.startswith(litera) or (not zg and p.pk not in globally_assigned_prac)
+            z = (p.zmiana or '').upper()
+            zg = (p.zmiana_grupa or '').upper()
+            return z == litera or zg.startswith(litera)
 
+        # Pracownicy priorytetowi (IN/OB/FF/ZW/PR) tej zmiany, obecni w dniu planu
         unassigned_priority: set[int] = {
             p.pk for p in pracownicy
             if _w_tej_zmianie(p) and p.departament.upper() in _PRIORITY_DEPTS
             and p.pk not in nieobecni_pks
         }
+        # Pozostali pracownicy (inne departamenty) tej zmiany
         unassigned_others: set[int] = {
             p.pk for p in pracownicy
             if _w_tej_zmianie(p) and p.departament.upper() not in _PRIORITY_DEPTS
@@ -604,12 +673,13 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
 
         def _apt_w_tej_zmianie(apt) -> bool:
             zg = apt.grupa.upper() if apt.grupa else ''
-            return zg.startswith(litera) or (not zg and apt.pk not in globally_assigned_apt)
+            return bool(zg) and zg.startswith(litera)
 
         unassigned_apt: set[int] = {
             apt.pk for apt in apt_pracownicy if _apt_w_tej_zmianie(apt)
         }
 
+        # Słowniki wyników dla tej zmiany: akt_pk → lista przydzielonych pracowników
         akt_assignments: dict[int, list[dict]] = {}
         akt_meta: dict[int, tuple] = {}
         for akt_pk, capacity, godziny in shift_acts:
@@ -618,65 +688,59 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
 
         shift_akt_pks = {akt_pk for akt_pk, _, _ in shift_acts}
 
-        # --- Faza 1: pre-rezerwacja wg macierzy procesowej ---
-        # Każdy pracownik ze scorami idzie do aktywności, gdzie ma NAJWYŻSZY wynik.
-        # Najlepsi pracownicy są obsługiwani pierwsi (sort po best_score desc),
-        # więc "gwiazdy" zajmują swoje optymalne miejsce zanim trafi je ktoś słabszy.
-        worker_best: dict[int, tuple[float, int]] = {}  # wpk → (best_score, best_akt_pk)
-        for wpk in (unassigned_priority | unassigned_others):
-            best_score = 0.0
-            best_akt = -1
-            for apk in shift_akt_pks:
-                s = worker_group_score.get((wpk, apk), 0.0)
-                if s > best_score:
-                    best_score, best_akt = s, apk
-            if best_akt != -1 and best_score > 0:
-                worker_best[wpk] = (best_score, best_akt)
-
-        for wpk, (score, akt_pk) in sorted(worker_best.items(), key=lambda x: -x[1][0]):
-            capacity = akt_meta[akt_pk][0]
-            assigned = akt_assignments[akt_pk]
-            if len(assigned) >= capacity:
-                continue
-            obj = pk_to_p[wpk]
-            assigned.append({'pk': wpk, 'imie': obj.imie, 'nazwisko': obj.nazwisko,
-                             'zmiana_grupa': obj.zmiana_grupa,
-                             'nieobecny': wpk in nieobecni_pks,
-                             'wynik': round(score, 1),
-                             'zapychacz': False, 'apt': False})
-            unassigned_priority.discard(wpk)
-            unassigned_others.discard(wpk)
-
-        # --- Faza 2: uzupełnienie pozostałej pojemności wg standardowego dopasowania (tylko etatowi) ---
-        for akt_pk, capacity, godziny in shift_acts:
+        # --- Faza 1: Przydzielanie wg priorytetu: zmiana → dział → oceny z macierzy ---
+        # Zmiana wyegzekwowana przez unassigned_priority/unassigned_others (_w_tej_zmianie).
+        # Tier 1: pasujący dział (dzial/departament pracownika ↔ dzial aktywności) — score DESC
+        # Tier 2: inny dział, ale powiązanie z aktywnością (kompetencja/score) — score DESC
+        for akt_pk, capacity, _ in shift_acts:
             akt = akt_cache[akt_pk]
             assigned = akt_assignments[akt_pk]
             norm_nazwa = _norm(akt.nazwa)
             akt_dzial = akt.dzial
 
-            if len(assigned) < capacity:
-                combined = unassigned_priority | unassigned_others
-                candidates = [p for p in combined
-                              if (_pasuje_do_aktywnosci(pk_to_p[p], norm_nazwa, akt_dzial)
-                                  or akt_pk in komp_map.get(p, set())
-                                  or worker_group_score.get((p, akt_pk), 0.0) > 0)]
-                candidates.sort(key=lambda p: (
-                    -worker_group_score.get((p, akt_pk), 0.0),
-                    0 if p in unassigned_priority else 1,
-                    pk_to_p[p].nazwisko,
-                ))
-                for pk in candidates[:capacity - len(assigned)]:
-                    obj = pk_to_p[pk]
-                    score2 = worker_group_score.get((pk, akt_pk))
-                    assigned.append({'pk': pk, 'imie': obj.imie, 'nazwisko': obj.nazwisko,
-                                     'zmiana_grupa': obj.zmiana_grupa,
-                                     'nieobecny': pk in nieobecni_pks,
-                                     'wynik': round(score2, 1) if score2 else None,
-                                     'zapychacz': False, 'apt': False})
-                    unassigned_priority.discard(pk)
-                    unassigned_others.discard(pk)
+            if len(assigned) >= capacity:
+                continue
+
+            combined = unassigned_priority | unassigned_others
+
+            # Domyślny argument (_dzial=akt_dzial) zamraża wartość zmiennej pętli w domknięciu
+            def _dept_ok(pk: int, _dzial=akt_dzial) -> bool:
+                p = pk_to_p[pk]
+                return (_dzialy_match(p.dzial, _dzial) or _dept_matches_akt(p.departament, _dzial))
+
+            def _has_conn(pk: int, _apk=akt_pk, _nn=norm_nazwa, _dzial=akt_dzial) -> bool:
+                return (
+                    _pasuje_do_aktywnosci(pk_to_p[pk], _nn, _dzial)
+                    or _apk in komp_map.get(pk, set())
+                    or worker_group_score.get((pk, _apk), 0.0) > 0
+                )
+
+            tier1 = sorted(
+                (pk for pk in combined if _dept_ok(pk)),
+                key=lambda pk: (-worker_group_score.get((pk, akt_pk), 0.0), pk_to_p[pk].nazwisko)
+            )
+            tier2 = sorted(
+                (pk for pk in combined if not _dept_ok(pk) and _has_conn(pk)),
+                key=lambda pk: (-worker_group_score.get((pk, akt_pk), 0.0), pk_to_p[pk].nazwisko)
+            )
+
+            for pk in tier1 + tier2:
+                if len(assigned) >= capacity:
+                    break
+                obj = pk_to_p[pk]
+                score = worker_group_score.get((pk, akt_pk))
+                assigned.append({
+                    'pk': pk, 'imie': obj.imie, 'nazwisko': obj.nazwisko,
+                    'zmiana_grupa': obj.zmiana_grupa,
+                    'nieobecny': pk in nieobecni_pks,
+                    'wynik': round(score, 1) if score else None,
+                    'zapychacz': False, 'apt': False,
+                })
+                unassigned_priority.discard(pk)
+                unassigned_others.discard(pk)
 
         # --- Faza 3: APT wypełnia pozostałą pojemność po wszystkich etatowych ---
+        # Sortuj APT malejąco po ocenie dla tej aktywności
         for akt_pk, capacity, _ in shift_acts:
             assigned = akt_assignments[akt_pk]
             apt_by_score = sorted(unassigned_apt,
@@ -689,10 +753,12 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
                                   'wynik': None, 'zapychacz': False, 'apt': True})
                 unassigned_apt.discard(apt_pk2)
 
-        # Force-assign: priorytetowi, którym nie przydzielono aktywności
+        # Force-assign: priorytetowi bez dopasowania trafiają do pierwszej aktywności z ich działu
         for pk in list(unassigned_priority):
             obj = pk_to_p[pk]
-            for akt_pk, _, _ in shift_acts:
+            for akt_pk, cap_fa, _ in shift_acts:
+                if len(akt_assignments.get(akt_pk, [])) >= cap_fa:
+                    continue
                 akt_dzial_fa = akt_cache[akt_pk].dzial
                 if (_dzialy_match(obj.dzial, akt_dzial_fa)
                         or _dept_matches_akt(obj.departament, akt_dzial_fa)
@@ -706,7 +772,7 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
                     unassigned_priority.discard(pk)
                     break
 
-        # Zbuduj wynik zmiany
+        # Zbuduj wynik zmiany jako słownik: str(akt_pk) → dane aktywności
         zmiana_result: dict = {}
         for akt_pk, _, _ in sorted(shift_acts, key=lambda x: akt_cache[x[0]].nazwa):
             workers = akt_assignments.get(akt_pk, [])
@@ -720,7 +786,7 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
                 'godziny': {str(h): v for h, v in sorted(godziny.items())},
             }
 
-        # Fillers
+        # Fillers — pracownicy nieprzydzieleni z powodem (capacity/no_match/no_activities)
         fillers: list[dict] = []
         for pk in (*unassigned_priority, *unassigned_others):
             obj = pk_to_p[pk]
@@ -730,11 +796,11 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
                 or worker_group_score.get((pk, apk), 0.0) > 0
                 for apk in shift_akt_pks
             ):
-                powod = 'capacity'
+                powod = 'capacity'    # pasuje ale nie ma miejsca
             elif not shift_akt_pks:
                 powod = 'no_activities'
             else:
-                powod = 'no_match'
+                powod = 'no_match'    # nie pasuje do żadnej aktywności
             fillers.append({'pk': pk, 'imie': obj.imie, 'nazwisko': obj.nazwisko,
                             'zmiana_grupa': obj.zmiana_grupa,
                             'nieobecny': False, 'powod': powod,
@@ -744,8 +810,9 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
         for p in pracownicy:
             if p.pk not in nieobecni_pks or p.pk in globally_absent_shown:
                 continue
-            zg = p.zmiana_grupa.upper() if p.zmiana_grupa else ''
-            if zg.startswith(litera) or not zg:
+            z = (p.zmiana or '').upper()
+            zg = (p.zmiana_grupa or '').upper()
+            if z == litera or zg.startswith(litera):
                 fillers.append({'pk': p.pk, 'imie': p.imie, 'nazwisko': p.nazwisko,
                                 'zmiana_grupa': p.zmiana_grupa,
                                 'nieobecny': True, 'powod': 'nieobecny',
@@ -753,6 +820,7 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
                                 'wynik': None, 'zapychacz': True, 'apt': False})
                 globally_absent_shown.add(p.pk)
                 globally_assigned_prac.add(p.pk)  # zapobiega podwójnemu pojawieniu w kolejnych zmianach
+        # Nieprzydzieleni APT → fillers
         for apt_pk in unassigned_apt:
             obj = apt_pk_to_p[apt_pk]
             powod_apt = ('capacity' if any(comp_apt.get((apt_pk, apk), 0.0) > 0 for apk in shift_akt_pks)
@@ -762,6 +830,7 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
                             'nieobecny': False, 'powod': powod_apt,
                             'wynik': None, 'zapychacz': True, 'apt': True})
         if fillers:
+            # Zlicz powody fillers dla statystyk wyświetlanych w UI
             powody_cnt = {
                 'nieobecny': sum(1 for f in fillers if f.get('nieobecny')),
                 'capacity':  sum(1 for f in fillers if f.get('powod') == 'capacity'),
@@ -776,24 +845,32 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
                 'godziny': {},
             }
 
-        # Rejestruj globalnie przydzielonych (deduplication dla "bez zmiany")
-        for workers_list in akt_assignments.values():
-            for w in workers_list:
-                if w.get('apt'):
-                    globally_assigned_apt.add(w['pk'])
-                else:
-                    globally_assigned_prac.add(w['pk'])
+        # Zarejestruj globalnie WSZYSTKICH pracowników tej zmiany (przydzielonych i fillerów)
+        # — gdyby rejestrować tylko przydzielonych, pracownicy bez zmiana_grupy mogliby
+        #   trafić do fillers zmiany I i ponownie dostać szansę na przydział w zmianie II
+        for p in pracownicy:
+            if _w_tej_zmianie(p):
+                globally_assigned_prac.add(p.pk)
+        for apt in apt_pracownicy:
+            if _apt_w_tej_zmianie(apt):
+                globally_assigned_apt.add(apt.pk)
 
         result[str(zmiana)] = zmiana_result
 
-    # ─── Zmiana D (PRASA / KDR) ───────────────────────────────────────────────
+    # ─── Zmiana D (PRASA / KDR) — osobna logika dla pracowników ze zmiana_grupy zaczynającej się od 'D' ───
     litera_d = litera_map.get(4, 'D')
-    d_pracownicy = [p for p in pracownicy if p.zmiana_grupa.upper().startswith(litera_d)]
+    d_pracownicy = [
+        p for p in pracownicy
+        if (p.zmiana or '').upper() == litera_d
+        or (p.zmiana_grupa or '').upper().startswith(litera_d)
+    ]
     d_prac_pks: set[int] = {p.pk for p in d_pracownicy}
 
     if d_prac_pks:
+        # Grupy procesowe powiązane z Prasą/KDR
         _D_GROUPS = {24, 56}
         _D_DEPT_KW = frozenset({'kdr', 'zwrot', 'prasa'})
+        # Znajdź aktywności przynależne do zmiany D na podstawie grupy procesowej lub departamentu PR
         d_akt_pks: set[int] = set()
         for akt_pk in akt_pks_in_plan:
             akt = akt_cache[akt_pk]
@@ -804,7 +881,7 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
                     or _dept_matches_akt('PR', akt.dzial)):
                 d_akt_pks.add(akt_pk)
 
-        # Godziny D: max z wszystkich zmian (1/2/3) per godzina
+        # Godziny D: agregacja max ze wszystkich zmian (D obejmuje cały dzień)
         d_act_godziny: dict[int, dict[int, float]] = {}
         for akt_pk in d_akt_pks:
             agg: dict[int, float] = {}
@@ -828,60 +905,56 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
         d_shift_akt_pks = {apk for apk, _, _ in d_shift_acts}
         d_akt_assignments: dict[int, list[dict]] = {apk: [] for apk, _, _ in d_shift_acts}
         d_akt_meta: dict[int, tuple] = {apk: (cap, g) for apk, cap, g in d_shift_acts}
+        # Pracownicy zmiany D, którzy są obecni
         d_unassigned: set[int] = {pk for pk in d_prac_pks if pk not in nieobecni_pks}
 
         d_apt_list = [apt for apt in apt_pracownicy if (apt.grupa or '').upper().startswith(litera_d)]
         d_unassigned_apt: set[int] = {apt.pk for apt in d_apt_list}
 
-        # Faza 1 D: pre-rezerwacja wg macierzy procesowej
-        d_worker_best: dict[int, tuple[float, int]] = {}
-        for wpk in d_unassigned:
-            best_s, best_a = 0.0, -1
-            for apk in d_shift_akt_pks:
-                s = worker_group_score.get((wpk, apk), 0.0)
-                if s > best_s:
-                    best_s, best_a = s, apk
-            if best_a != -1 and best_s > 0:
-                d_worker_best[wpk] = (best_s, best_a)
-
-        for wpk, (score, apk) in sorted(d_worker_best.items(), key=lambda x: -x[1][0]):
-            cap = d_akt_meta[apk][0]
-            if len(d_akt_assignments[apk]) >= cap:
-                continue
-            obj = pk_to_p[wpk]
-            d_akt_assignments[apk].append({
-                'pk': wpk, 'imie': obj.imie, 'nazwisko': obj.nazwisko,
-                'zmiana_grupa': obj.zmiana_grupa,
-                'nieobecny': wpk in nieobecni_pks,
-                'wynik': round(score, 1), 'zapychacz': False, 'apt': False,
-            })
-            d_unassigned.discard(wpk)
-
-        # Faza 2 D: uzupełnienie etatowi
+        # Faza 1 D: dział-first (ta sama logika co zmiana 1/2/3)
         for apk, cap, _ in d_shift_acts:
             akt = akt_cache[apk]
             assigned = d_akt_assignments[apk]
-            if len(assigned) < cap:
-                candidates = [p for p in d_unassigned
-                              if (_pasuje_do_aktywnosci(pk_to_p[p], _norm(akt.nazwa), akt.dzial)
-                                  or apk in komp_map.get(p, set())
-                                  or worker_group_score.get((p, apk), 0.0) > 0)]
-                candidates.sort(key=lambda p: (
-                    -worker_group_score.get((p, apk), 0.0),
-                    pk_to_p[p].nazwisko,
-                ))
-                for pk in candidates[:cap - len(assigned)]:
-                    obj = pk_to_p[pk]
-                    s2 = worker_group_score.get((pk, apk))
-                    assigned.append({
-                        'pk': pk, 'imie': obj.imie, 'nazwisko': obj.nazwisko,
-                        'zmiana_grupa': obj.zmiana_grupa,
-                        'nieobecny': pk in nieobecni_pks,
-                        'wynik': round(s2, 1) if s2 else None, 'zapychacz': False, 'apt': False,
-                    })
-                    d_unassigned.discard(pk)
+            norm_nazwa_d = _norm(akt.nazwa)
+            akt_dzial_d = akt.dzial
 
-        # Faza 3 D: APT wypełnia pozostałą pojemność po wszystkich etatowych
+            if len(assigned) >= cap:
+                continue
+
+            def _dept_ok_d(pk: int, _dzial=akt_dzial_d) -> bool:
+                p = pk_to_p[pk]
+                return (_dzialy_match(p.dzial, _dzial) or _dept_matches_akt(p.departament, _dzial))
+
+            def _has_conn_d(pk: int, _apk=apk, _nn=norm_nazwa_d, _dzial=akt_dzial_d) -> bool:
+                return (
+                    _pasuje_do_aktywnosci(pk_to_p[pk], _nn, _dzial)
+                    or _apk in komp_map.get(pk, set())
+                    or worker_group_score.get((pk, _apk), 0.0) > 0
+                )
+
+            tier1_d = sorted(
+                (pk for pk in d_unassigned if _dept_ok_d(pk)),
+                key=lambda pk: (-worker_group_score.get((pk, apk), 0.0), pk_to_p[pk].nazwisko)
+            )
+            tier2_d = sorted(
+                (pk for pk in d_unassigned if not _dept_ok_d(pk) and _has_conn_d(pk)),
+                key=lambda pk: (-worker_group_score.get((pk, apk), 0.0), pk_to_p[pk].nazwisko)
+            )
+
+            for pk in tier1_d + tier2_d:
+                if len(assigned) >= cap:
+                    break
+                obj = pk_to_p[pk]
+                s = worker_group_score.get((pk, apk))
+                assigned.append({
+                    'pk': pk, 'imie': obj.imie, 'nazwisko': obj.nazwisko,
+                    'zmiana_grupa': obj.zmiana_grupa,
+                    'nieobecny': pk in nieobecni_pks,
+                    'wynik': round(s, 1) if s else None, 'zapychacz': False, 'apt': False,
+                })
+                d_unassigned.discard(pk)
+
+        # Faza 3 D: APT wypełnia pozostałą pojemność
         for apk, cap, _ in d_shift_acts:
             assigned = d_akt_assignments[apk]
             apt_sorted = sorted(d_unassigned_apt, key=lambda pk: -comp_apt.get((pk, apk), 0.0))
@@ -909,7 +982,7 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
                 'godziny': {str(h): v for h, v in sorted(godziny_d.items())},
             }
 
-        # Fillers D
+        # Fillers D (ta sama logika co zmiana 1/2/3)
         d_fillers: list[dict] = []
         for wpk in d_unassigned:
             obj = pk_to_p[wpk]
@@ -956,21 +1029,169 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
                 'godziny': {},
             }
 
+        # Wynik zmiany D zapisany pod kluczem "4"
         result['4'] = d_result
+
+    # === POST-PROCESSING: No-zmiana workers fill remaining shift capacity ===
+    # Workers WITH zmiana_grupo were placed by the main loops above (zmiana first).
+    # Workers WITHOUT zmiana_grupo are now assigned greedily to activities with
+    # remaining capacity, using the same dept→score priority within each shift.
+    # A worker is placed in exactly one shift; those with no match go to "Bez zmiany".
+
+    bez_zmiany_prac = [
+        p for p in pracownicy
+        if not (p.zmiana or '').strip() and not (p.zmiana_grupa or '').strip()
+    ]
+    unassigned_bz_pks: set[int] = {p.pk for p in bez_zmiany_prac if p.pk not in nieobecni_pks}
+    bz_pk_to_p: dict = {p.pk: p for p in bez_zmiany_prac}
+
+    if unassigned_bz_pks:
+        for zmiana_str in ['1', '2', '3']:
+            if zmiana_str not in result:
+                continue
+            # Activities with remaining capacity, sorted by gap DESC (fill most-needed first)
+            acts_need: list = []
+            for akt_key, akt_data in result[zmiana_str].items():
+                if akt_key == '__fillers__':
+                    continue
+                current = len(akt_data['pracownicy'])
+                cap = akt_data['wymagana']
+                if current < cap:
+                    acts_need.append((int(akt_key), cap - current))
+            acts_need.sort(key=lambda x: -x[1])
+
+            for akt_pk_bz, _ in acts_need:
+                if not unassigned_bz_pks:
+                    break
+                akt_key_bz = str(akt_pk_bz)
+                akt_bz = akt_cache[akt_pk_bz]
+                akt_dzial_bz = akt_bz.dzial
+                norm_nazwa_bz = _norm(akt_bz.nazwa)
+
+                current_ct = len(result[zmiana_str][akt_key_bz]['pracownicy'])
+                cap_bz = result[zmiana_str][akt_key_bz]['wymagana']
+
+                def _dept_ok_bz(pk, _dz=akt_dzial_bz):
+                    p = bz_pk_to_p[pk]
+                    return _dzialy_match(p.dzial, _dz) or _dept_matches_akt(p.departament, _dz)
+
+                def _has_conn_bz(pk, _apk=akt_pk_bz, _nn=norm_nazwa_bz, _dz=akt_dzial_bz):
+                    p = bz_pk_to_p[pk]
+                    return (
+                        _pasuje_do_aktywnosci(p, _nn, _dz)
+                        or _apk in komp_map.get(pk, set())
+                        or worker_group_score.get((pk, _apk), 0.0) > 0
+                    )
+
+                tier1_bz = sorted(
+                    (pk for pk in unassigned_bz_pks if _dept_ok_bz(pk)),
+                    key=lambda pk: (-worker_group_score.get((pk, akt_pk_bz), 0.0), bz_pk_to_p[pk].nazwisko)
+                )
+                tier2_bz = sorted(
+                    (pk for pk in unassigned_bz_pks if not _dept_ok_bz(pk) and _has_conn_bz(pk)),
+                    key=lambda pk: (-worker_group_score.get((pk, akt_pk_bz), 0.0), bz_pk_to_p[pk].nazwisko)
+                )
+
+                for pk in tier1_bz + tier2_bz:
+                    if current_ct >= cap_bz:
+                        break
+                    p = bz_pk_to_p[pk]
+                    wynik = worker_group_score.get((pk, akt_pk_bz))
+                    result[zmiana_str][akt_key_bz]['pracownicy'].append({
+                        'pk': pk, 'imie': p.imie, 'nazwisko': p.nazwisko,
+                        'zmiana_grupa': p.zmiana_grupa,
+                        'nieobecny': False,
+                        'wynik': round(wynik, 1) if wynik else None,
+                        'zapychacz': False, 'apt': False,
+                    })
+                    unassigned_bz_pks.discard(pk)
+                    current_ct += 1
+
+    # === POST-PROCESSING 2: APT workers fill remaining capacity ===
+    # APT workers have no shift group (grupa='') and no competency scores.
+    # They fill whatever gaps remain after regular + no-zmiana workers are placed.
+    # Each APT worker is placed in exactly one activity (globally tracked).
+
+    apt_globally_used: set[int] = set()
+    apts_available = sorted(apt_pracownicy, key=lambda a: (a.nazwisko, a.imie))
+
+    for zmiana_str in ['1', '2', '3']:
+        if zmiana_str not in result:
+            continue
+        acts_apt: list = []
+        for akt_key, akt_data in result[zmiana_str].items():
+            if akt_key == '__fillers__':
+                continue
+            current = len(akt_data['pracownicy'])
+            cap = akt_data['wymagana']
+            if current < cap:
+                acts_apt.append((int(akt_key), cap - current))
+        acts_apt.sort(key=lambda x: -x[1])
+
+        for akt_pk_a, _ in acts_apt:
+            akt_key_a = str(akt_pk_a)
+            current_ct = len(result[zmiana_str][akt_key_a]['pracownicy'])
+            cap_a = result[zmiana_str][akt_key_a]['wymagana']
+
+            for apt in apts_available:
+                if apt.pk in apt_globally_used:
+                    continue
+                if current_ct >= cap_a:
+                    break
+                result[zmiana_str][akt_key_a]['pracownicy'].append({
+                    'pk': apt.pk, 'imie': apt.imie, 'nazwisko': apt.nazwisko,
+                    'zmiana_grupa': apt.grupa,
+                    'nieobecny': False,
+                    'wynik': None, 'zapychacz': False, 'apt': True,
+                })
+                apt_globally_used.add(apt.pk)
+                current_ct += 1
+
+    # Workers with no dept/competency match in any shift + absent no-zmiana → "Bez zmiany"
+    bez_zmiany_remaining = [
+        p for p in bez_zmiany_prac
+        if p.pk in unassigned_bz_pks or p.pk in nieobecni_pks
+    ]
+    if bez_zmiany_remaining:
+        bz_fillers = sorted([
+            {'pk': p.pk, 'imie': p.imie, 'nazwisko': p.nazwisko,
+             'zmiana_grupa': '', 'nieobecny': p.pk in nieobecni_pks,
+             'powod': 'nieobecny' if p.pk in nieobecni_pks else 'no_match',
+             'sektor': _sektor(p.arkusz),
+             'wynik': None, 'zapychacz': True, 'apt': False}
+            for p in bez_zmiany_remaining
+        ], key=lambda w: (w['nazwisko'], w['imie']))
+        result['0'] = {
+            '__fillers__': {
+                'nazwa': '(bez przypisanej aktywności)',
+                'dzial': '',
+                'wymagana': len(bz_fillers),
+                'pracownicy': bz_fillers,
+                'powody': {
+                    'nieobecny': sum(1 for f in bz_fillers if f['nieobecny']),
+                    'capacity': 0,
+                    'no_match': sum(1 for f in bz_fillers if not f['nieobecny']),
+                },
+                'godziny': {},
+            }
+        }
 
     return result
 
 
+# Wywołuje algorytm przydziału i zapisuje/aktualizuje PrzydzialDzienny dla planu
 @login_required
 def przydziel_plan(request, pk):
     if request.method != 'POST':
         return redirect('pracownicy:plany_lista')
     plan = get_object_or_404(PlanDzienny, pk=pk)
+    # Brak pracowników = niemożliwy przydział
     if not Pracownik.objects.exists():
         messages.error(request, 'Brak pracowników w bazie — najpierw zaimportuj pracowników.')
         return redirect('pracownicy:plany_lista')
     try:
         dane = _wykonaj_przydzial(plan)
+        # update_or_create: jeśli plan miał już przydział — nadpisuje go nowym
         PrzydzialDzienny.objects.update_or_create(plan=plan, defaults={'dane': dane})
         messages.success(request, f'Przydzielono pracowników do planu „{plan.nazwa_pliku}".')
     except Exception as exc:
@@ -979,7 +1200,9 @@ def przydziel_plan(request, pk):
     return redirect('pracownicy:wyniki_przydzialu', pk=pk)
 
 
+# Etykiety zmian wyświetlane w nagłówkach sekcji na stronie wyników
 ZMIANA_NAZWA = {
+    0: 'Bez przypisanej zmiany',
     1: 'Zmiana I (6–13)',
     2: 'Zmiana II (14–21)',
     3: 'Zmiana III (22–5)',
@@ -987,6 +1210,7 @@ ZMIANA_NAZWA = {
 }
 
 
+# Wyświetla wyniki przydziału: tabele z pracownikami per zmiana i aktywność + dane do modali
 @login_required
 def wyniki_przydzialu(request, pk):
     plan = get_object_or_404(PlanDzienny, pk=pk)
@@ -1005,13 +1229,14 @@ def wyniki_przydzialu(request, pk):
         for akt_key, akt_data in akt_dict.items():
             n = len(akt_data['pracownicy'])
             akt_data['przydzielono'] = n
+            # kompletny = True jeśli przydzielono co najmniej tylu ile wymagano
             akt_data['kompletny'] = (n >= akt_data.get('wymagana', n))
 
             if akt_key == '__fillers__':
                 akt_data['dzial'] = ''
                 total_fillers += n
                 prac = akt_data['pracownicy']
-                # Enrich sektor from DB for backwards-compat (old JSON won't have it)
+                # Uzupełnij sektor z DB dla starych JSON które go nie mają (backward compat)
                 etat_prac = [p for p in prac if not p.get('apt')]
                 missing_sektor_pks = [p['pk'] for p in etat_prac if 'sektor' not in p]
                 if missing_sektor_pks:
@@ -1030,10 +1255,11 @@ def wyniki_przydzialu(request, pk):
                 dzialy_org.setdefault(dzial, []).append(akt_data)
                 total_pracownicy += n
 
+        # Sortuj aktywności alfabetycznie w każdym dziale
         for lst in dzialy_org.values():
             lst.sort(key=lambda x: x['nazwa'])
 
-        # Move fillers section to end
+        # Sekcja fillers zawsze na końcu (po wszystkich działach)
         dzialy_sorted = {k: v for k, v in sorted(dzialy_org.items())
                          if k != '(bez przypisanej aktywności)'}
         if '(bez przypisanej aktywności)' in dzialy_org:
@@ -1046,12 +1272,13 @@ def wyniki_przydzialu(request, pk):
             'total_fillers': total_fillers,
         }
 
+    # Kolejność godzin dla każdej zmiany (zmiana III przekracza północ)
     _zmiana_godziny = {
         1: [6, 7, 8, 9, 10, 11, 12, 13],
         2: [14, 15, 16, 17, 18, 19, 20, 21],
         3: [22, 23, 0, 1, 2, 3, 4, 5],
     }
-    # Godziny D: wyznacz dynamicznie z rzeczywistych danych
+    # Godziny D: wyznacz dynamicznie z rzeczywistych danych (D może mieć różne godziny)
     if 4 in zmiany_dane:
         _d_hours: set[int] = set()
         for _akts_d in zmiany_dane[4]['dzialy'].values():
@@ -1059,9 +1286,10 @@ def wyniki_przydzialu(request, pk):
                 for _h_str, _v in (_akt_d.get('godziny') or {}).items():
                     if _v > 0:
                         _d_hours.add(int(_h_str))
+        # Sortuj godziny chronologicznie (godziny < 6 to "jutro" — przekształć na +24 dla sortowania)
         _zmiana_godziny[4] = sorted(_d_hours, key=lambda h: h if h >= 6 else h + 24)
 
-    # Dodaj godziny_ordered (lista [[h, wymagane], ...]) do każdej aktywności
+    # Dodaj godziny_ordered (lista [[godzina, wymagane_osoby], ...]) do każdej aktywności
     for zmiana_int, zd in zmiany_dane.items():
         hour_order = _zmiana_godziny.get(zmiana_int, [])
         for aktywnosci in zd['dzialy'].values():
@@ -1071,7 +1299,7 @@ def wyniki_przydzialu(request, pk):
                     [h, g.get(str(h), 0.0)] for h in hour_order
                 ]
 
-    # Mapowanie nazwa_działu → kod strefy (IN/OB/FF/ZW/PR)
+    # Mapowanie nazwa_działu → kod strefy (do kolorowania sekcji w UI)
     all_dzialy: set[str] = set()
     for zd in zmiany_dane.values():
         all_dzialy.update(zd['dzialy'].keys())
@@ -1079,10 +1307,11 @@ def wyniki_przydzialu(request, pk):
 
     litera_map = KonfiguracjaZmian.pobierz().jako_slownik()
 
-    # --- Dane do modali aktywności i pracowników ---
+    # --- Przygotowanie danych JSON dla modali ---
+    # (bezpiecznie osadzone w szablonie przez {{ zmienna|json_script:"id" }})
     _db_akt_names = set(Aktywnosc.objects.values_list('nazwa', flat=True))
 
-    # Zbierz PKi WSZYSTKICH pracowników z planu (strukturowych, nie APT)
+    # Zbierz PKi wszystkich pracowników etatowych z planu
     all_plan_worker_pks: set[int] = set()
     for _zd in zmiany_dane.values():
         for _akts in _zd['dzialy'].values():
@@ -1091,13 +1320,14 @@ def wyniki_przydzialu(request, pk):
                     if not _p.get('apt'):
                         all_plan_worker_pks.add(_p['pk'])
 
-    # Top 4 kompetencje per pracownik (posortowane wg wyniku desc)
+    # Top 4 kompetencje per pracownik (posortowane wg wyniku desc) — wyświetlane w modalu pracownika
     worker_top_komp: dict[int, list[dict]] = {}
     if all_plan_worker_pks:
         _komp_rows = (KompetencjaPracownika.objects
                       .filter(pracownik_id__in=all_plan_worker_pks, wynik__gt=0)
                       .select_related('aktywnosc')
                       .order_by('pracownik_id', '-wynik'))
+        # Grupuj kompetencje per pracownik (posortowane już po pracowniku i wyniku)
         _cur_pk: int | None = None
         _cur_lst: list = []
         for _k in _komp_rows:
@@ -1111,7 +1341,7 @@ def wyniki_przydzialu(request, pk):
         if _cur_pk is not None:
             worker_top_komp[_cur_pk] = _cur_lst
 
-    # worker_data: pk → {imie, nazwisko, zmiana_grupa, wynik_procesowy, top_komp}
+    # worker_data: pk → dane wyświetlane w modalu kliknięcia na badge pracownika
     worker_data: dict[int, dict] = {}
     for _zd in zmiany_dane.values():
         for _akts in _zd['dzialy'].values():
@@ -1127,11 +1357,13 @@ def wyniki_przydzialu(request, pk):
                             'top_komp': worker_top_komp.get(_wpk, []),
                         }
 
+    # Konwertuje listę grup procesowych na format używany w modalu aktywności
     def _groups_to_info(groups: list[dict]) -> list[dict]:
         return [
             {
                 'nr': _g['nr'],
                 'nazwa': _g['nazwa'],
+                # w_db=True → czynność zielona w modalu (istnieje jako aktywność w DB)
                 'czynnosci': [
                     {'nazwa': _c, 'w_db': _c in _db_akt_names}
                     for _c in _g['czynnosci']
@@ -1140,7 +1372,8 @@ def wyniki_przydzialu(request, pk):
             for _g in groups
         ]
 
-    # modal_data: nazwa_aktywności → {groups, workers_scored}
+    # modal_data: nazwa_aktywności → {grupy procesowe + pracownicy z wynikami}
+    # Używane przez kliknięcie na nazwę aktywności (przycisk .akt-modal-trigger)
     modal_data: dict[str, dict] = {}
     _seen: set[str] = set()
     for _zd in zmiany_dane.values():
@@ -1150,6 +1383,7 @@ def wyniki_przydzialu(request, pk):
                 if not _nazwa or _nazwa == '(bez przypisanej aktywności)' or _nazwa in _seen:
                     continue
                 _seen.add(_nazwa)
+                # Tylko pracownicy którzy mają wynik (score z macierzy) — do wyświetlenia w modalu
                 _workers_scored = [
                     {
                         'pk': _p['pk'],
@@ -1166,7 +1400,7 @@ def wyniki_przydzialu(request, pk):
                     'workers': _workers_scored,
                 }
 
-    # Rankingi w grupach procesowych dla wszystkich pracowników planu
+    # Oblicz rankingi pracowników w grupach procesowych (wyświetlane w modalu pracownika)
     _db_akt_pk_map = {a.nazwa: a.pk for a in Aktywnosc.objects.only('pk', 'nazwa')}
     _gpk_to_g: dict[int, dict] = {}
     for _g in _GP:
@@ -1175,6 +1409,7 @@ def wyniki_przydzialu(request, pk):
             if _pk2:
                 _gpk_to_g[_pk2] = _g
 
+    # Akumuluj sumy wyników per (pracownik, numer_grupy) do obliczenia średniej
     _wpk_grp_sums: dict[tuple, float] = {}
     _wpk_grp_cnts: dict[tuple, int] = {}
     for _row in (KompetencjaPracownika.objects
@@ -1187,7 +1422,7 @@ def wyniki_przydzialu(request, pk):
         _wpk_grp_sums[_key2] = _wpk_grp_sums.get(_key2, 0.0) + float(_row['wynik'])
         _wpk_grp_cnts[_key2] = _wpk_grp_cnts.get(_key2, 0) + 1
 
-    # ranking per grupa: nr → [(wpk, avg)] malejąco
+    # Ranking per grupa: numer_grupy → [(worker_pk, avg)] posortowane malejąco
     _grp_rankings: dict[int, list] = {}
     for (_wpk2, _gnr), _s in _wpk_grp_sums.items():
         _avg2 = round(_s / _wpk_grp_cnts[(_wpk2, _gnr)], 1)
@@ -1196,6 +1431,7 @@ def wyniki_przydzialu(request, pk):
         _grp_rankings[_gnr].sort(key=lambda x: -x[1])
 
     _grp_info_map = {_g['nr']: _g for _g in _GP}
+    # Dla każdego pracownika z planu: lista grup z jego pozycją w rankingu
     _worker_grp_ranks: dict[int, list] = {}
     for _gnr, _ranking in _grp_rankings.items():
         for _rank, (_wpk2, _avg2) in enumerate(_ranking, 1):
@@ -1207,14 +1443,16 @@ def wyniki_przydzialu(request, pk):
                 'rank': _rank,
                 'score': _avg2,
             })
+    # Sortuj rankingi pracownika malejąco po score (najlepsza grupa na górze)
     for _wpk2 in _worker_grp_ranks:
         _worker_grp_ranks[_wpk2].sort(key=lambda x: -x['score'])
 
-    # Dołącz rankingi do worker_data
+    # Dołącz rankingi grup do danych pracownika
     for _wpk2, _wdata in worker_data.items():
         _wdata['group_rankings'] = _worker_grp_ranks.get(_wpk2, [])
 
-    # dzial_modal_data: nazwa_działu → {groups: [{nr, nazwa, czynnosci}]}
+    # dzial_modal_data: nazwa_działu → grupy procesowe wszystkich aktywności tego działu
+    # Używane przez kliknięcie na nagłówek działu (.dzial-modal-trigger)
     dzial_modal_data: dict[str, dict] = {}
     for _zd in zmiany_dane.values():
         for _dzial_nazwa, _akts_d in _zd['dzialy'].items():
@@ -1240,9 +1478,10 @@ def wyniki_przydzialu(request, pk):
     return render(request, 'pracownicy/wyniki_przydzialu.html', {
         'plan': plan,
         'przydzial': przydzial,
-        'zmiany_dane': dict(sorted(zmiany_dane.items())),
+        'zmiany_dane': dict(sorted(zmiany_dane.items(), key=lambda x: (x[0] == 0, x[0]))),
         'dzial_dept': dzial_dept,
         'litera_map': litera_map,
+        # Dane JSON dla modali — bezpiecznie osadzone przez json_script w szablonie
         'modal_data': modal_data,
         'worker_data': {str(pk): v for pk, v in worker_data.items()},
         'dzial_data': dzial_modal_data,
@@ -1251,6 +1490,7 @@ def wyniki_przydzialu(request, pk):
 
 # ── Lista pracowników APT ──────────────────────────────────────────────────────
 
+# Lista pracowników agencyjnych z liczbą ocen i paginacją (50 na stronę)
 @login_required
 def lista_pracownikow_apt(request):
     qs = PracownikAPT.objects.annotate(
@@ -1269,10 +1509,12 @@ def lista_pracownikow_apt(request):
 
 # ── Import: plan zmianowy ──────────────────────────────────────────────────────
 
+# Widok importu planu zmianowego — obsługuje trzy akcje: upload, confirm, save_config
 @login_required
 def import_plan_zmianowy(request):
     plany_count = PlanDzienny.objects.count()
 
+    # GET — wyświetl formularz z aktualną konfiguracją zmian
     if request.method == 'GET':
         return render(request, 'pracownicy/import_plan_zmianowy.html', {
             'plany_count': plany_count,
@@ -1281,12 +1523,14 @@ def import_plan_zmianowy(request):
 
     action = request.POST.get('action', 'upload')
 
+    # Akcja: zapisz konfigurację liter zmian (I=A/B/C, II=A/B/C, III=A/B/C)
     if action == 'save_config':
         cfg = KonfiguracjaZmian.pobierz()
         z1 = request.POST.get('zmiana_1', 'A')
         z2 = request.POST.get('zmiana_2', 'B')
         z3 = request.POST.get('zmiana_3', 'C')
         valid = {'A', 'B', 'C'}
+        # Każda litera musi być użyta dokładnie raz (bez duplikatów)
         if z1 in valid and z2 in valid and z3 in valid and len({z1, z2, z3}) == 3:
             cfg.zmiana_1, cfg.zmiana_2, cfg.zmiana_3 = z1, z2, z3
             cfg.save()
@@ -1295,9 +1539,11 @@ def import_plan_zmianowy(request):
             messages.error(request, 'Nieprawidłowa konfiguracja — każda litera (A/B/C) musi być użyta dokładnie raz.')
         return redirect('import_danych:import_plan_zmianowy')
 
+    # Akcja: potwierdź import (użytkownik kliknął "Importuj" po podglądzie)
     if action == 'confirm':
         tmp_uuid = request.POST.get('tmp_uuid', '')
         tmp_path = _tmp_dir() / f'{tmp_uuid}.json'
+        # Plik tymczasowy może wygasnąć jeśli użytkownik odczekał zbyt długo
         if not tmp_path.exists():
             messages.error(request, 'Sesja importu wygasła — prześlij plik ponownie.')
             return redirect('import_danych:import_plan_zmianowy')
@@ -1308,6 +1554,7 @@ def import_plan_zmianowy(request):
             messages.error(request, f'Błąd zapisu do bazy danych: {exc}')
             return redirect('import_danych:import_plan_zmianowy')
         finally:
+            # Zawsze usuń plik tymczasowy, nawet przy błędzie
             tmp_path.unlink(missing_ok=True)
 
         s = data['stats']
@@ -1319,7 +1566,7 @@ def import_plan_zmianowy(request):
         )
         return redirect('pracownicy:plany_lista')
 
-    # action == 'upload'
+    # Akcja: upload — parsuj plik i pokaż podgląd do potwierdzenia
     data_planu_raw = request.POST.get('data_planu', '').strip()
     plik = request.FILES.get('plik')
     if not plik:
@@ -1351,6 +1598,7 @@ def import_plan_zmianowy(request):
             'plany_count': plany_count,
         })
 
+    # Zlicz aktywności per dział do statystyk podglądu
     dzialy: dict[str, int] = {}
     for w in wiersze:
         dzialy[w.dzial] = dzialy.get(w.dzial, 0) + 1
@@ -1358,10 +1606,11 @@ def import_plan_zmianowy(request):
     stats = {
         'nazwa_pliku': plik.name,
         'total_aktywnosci': len(wiersze),
-        'total_rekordow': len(wiersze) * 24,
+        'total_rekordow': len(wiersze) * 24,  # 24 rekordy godzinowe per aktywność
         'dzialy': dzialy,
     }
 
+    # Serializuj dane do JSON — przechowaj tymczasowo w pliku (pomiędzy upload a confirm)
     data = {
         'wiersze': [
             {
@@ -1382,11 +1631,13 @@ def import_plan_zmianowy(request):
         'data_planu': data_planu_raw,
     }
 
+    # UUID jako nazwa pliku tymczasowego — zapobiega kolizjom przy jednoczesnych importach
     tmp_id = str(uuid.uuid4())
     (_tmp_dir() / f'{tmp_id}.json').write_text(
         json.dumps(data, ensure_ascii=False), encoding='utf-8'
     )
 
+    # Pokaż podgląd pierwszych 40 wierszy do zatwierdzenia przez użytkownika
     return render(request, 'pracownicy/import_plan_zmianowy.html', {
         'podglad': wiersze[:40],
         'stats': stats,
@@ -1398,6 +1649,7 @@ def import_plan_zmianowy(request):
     })
 
 
+# Zapisuje plan dzienny do DB z rekordami ZapotrzebowanieGodzinowe
 def _zapisz_plan_dzienny(data: dict, user) -> None:
     from datetime import date as date_type
     raw = data.get('data_planu', '')
@@ -1405,23 +1657,27 @@ def _zapisz_plan_dzienny(data: dict, user) -> None:
         dp = date_type.fromisoformat(raw) if raw else None
     except ValueError:
         dp = None
+    # Tworzy nowy rekord PlanDzienny (nagłówek)
     plan = PlanDzienny.objects.create(
         nazwa_pliku=data['stats']['nazwa_pliku'],
         data_planu=dp,
         importowany_przez=user,
     )
+    # Cache aktywności — unika wielokrotnych get_or_create dla tej samej pary (nazwa, dział)
     aktywnosci_cache: dict[tuple, int] = {}
     rekordy = []
 
     for wpis in data['wiersze']:
         key = (wpis['aktywnosc'], wpis['dzial'])
         if key not in aktywnosci_cache:
+            # get_or_create — nie duplikuje aktywności jeśli już istnieje z poprzedniego importu
             akt, _ = Aktywnosc.objects.get_or_create(nazwa=wpis['aktywnosc'], dzial=wpis['dzial'])
             aktywnosci_cache[key] = akt.pk
 
         akt_pk = aktywnosci_cache[key]
         wolumeny = {1: wpis['wolumen_I'], 2: wpis['wolumen_II'], 3: wpis['wolumen_III']}
 
+        # Utwórz 24 rekordy godzinowe per aktywność (3 zmiany × 8 godzin)
         for zmiana_str, godziny in wpis['godziny'].items():
             zmiana = int(zmiana_str)
             for godzina_str, liczba in godziny.items():
@@ -1434,11 +1690,13 @@ def _zapisz_plan_dzienny(data: dict, user) -> None:
                     wolumen=wolumeny.get(zmiana),
                 ))
 
+    # bulk_create dla wydajności — jeden INSERT zamiast setek osobnych
     ZapotrzebowanieGodzinowe.objects.bulk_create(rekordy, ignore_conflicts=True)
 
 
 # ── Import: pracownicy ─────────────────────────────────────────────────────────
 
+# Widok importu pracowników — obsługuje dwa pliki: kompetencje i struktura (oba opcjonalne)
 @login_required
 def import_pracownicy(request):
     pracownicy_count = Pracownik.objects.count()
@@ -1450,6 +1708,7 @@ def import_pracownicy(request):
 
     action = request.POST.get('action', 'upload')
 
+    # Akcja: potwierdź import — odczytaj dane z pliku tymczasowego i zapisz do DB
     if action == 'confirm':
         tmp_uuid = request.POST.get('tmp_uuid', '')
         tmp_path = _tmp_dir() / f'{tmp_uuid}.json'
@@ -1472,7 +1731,7 @@ def import_pracownicy(request):
             tmp_path.unlink(missing_ok=True)
         return redirect('pracownicy:lista')
 
-    # action == 'upload'
+    # Akcja: upload — parsuj pliki i pokaż podgląd
     plik_kompetencje = request.FILES.get('plik_kompetencje')
     plik_struktura = request.FILES.get('plik_struktura')
 
@@ -1482,6 +1741,7 @@ def import_pracownicy(request):
             'pracownicy_count': pracownicy_count,
         })
 
+    # Słowniki wynikowe — scalane z obu plików (ten sam pracownik w obu)
     pracownicy_dict: dict[tuple, dict] = {}
     kompetencje_dict: dict[tuple, list] = {}
     absencje_list: list[dict] = []
@@ -1500,6 +1760,8 @@ def import_pracownicy(request):
             p_list, k_dict, ostr = parsuj_kompetencje(plik_kompetencje)
             for p in p_list:
                 key = (p['nazwisko'], p['imie'])
+                # Pola strukturalne (dzial, zmiana) NIE są brane z pliku kompetencji
+                # bo tam bywają niekompletne — zostaną nadpisane przez plik struktury
                 _tylko_struktura = {'dzial', 'zmiana', 'zmiana_grupa'}
                 p_komp = {k: v for k, v in p.items() if k not in _tylko_struktura}
                 pracownicy_dict[key] = {**pracownicy_dict.get(key, {}), **p_komp}
@@ -1524,6 +1786,7 @@ def import_pracownicy(request):
             p_list, a_list, ostr = parsuj_strukture(plik_struktura)
             for p in p_list:
                 key = (p['nazwisko'], p['imie'])
+                # Dane struktury nadpisują kompetencje dla tych samych pracowników (merge)
                 pracownicy_dict[key] = {**pracownicy_dict.get(key, {}), **p}
             absencje_list.extend(a_list)
             ostrzezenia.extend(ostr)
@@ -1539,6 +1802,7 @@ def import_pracownicy(request):
             'pracownicy_count': pracownicy_count,
         })
 
+    # Scal pracowników z ich kompetencjami w jeden słownik
     pracownicy_list = [
         {**pdata, 'kompetencje': kompetencje_dict.get(key, [])}
         for key, pdata in pracownicy_dict.items()
@@ -1550,7 +1814,7 @@ def import_pracownicy(request):
         'total_absencji': len(absencje_list),
     }
 
-    # Grupowanie per arkusz do podglądu w modalu
+    # Grupowanie per arkusz do podglądu w modalu (zakładki IB/OB/FF/ZW/PR)
     _SHEET_ORDER = ['Struktura IN', 'Struktura IB', 'Struktura OB', 'Struktura FF', 'Struktura ZW', 'Struktura PR']
     _SHEET_LABEL = {
         'Struktura IN': 'IN — Inbound',
@@ -1562,6 +1826,7 @@ def import_pracownicy(request):
     }
     arkusze: dict[str, list] = {}
     for p in pracownicy_list:
+        # Pracownicy tylko z pliku kompetencji (bez struktury) trafiają do osobnej zakładki
         sheet = p.get('_sheet') or 'Tylko KOMPETENCJE'
         arkusze.setdefault(sheet, []).append(p)
 
@@ -1573,7 +1838,7 @@ def import_pracownicy(request):
                 'key': sh.replace(' ', '_'),
                 'label': _SHEET_LABEL.get(sh, sh),
                 'count': len(arkusze[sh]),
-                'pracownicy': arkusze[sh][:40],
+                'pracownicy': arkusze[sh][:40],  # max 40 pracowników w podglądzie
             })
             seen.add(sh)
     for sh, workers in arkusze.items():
@@ -1593,6 +1858,7 @@ def import_pracownicy(request):
     }
 
     tmp_id = str(uuid.uuid4())
+    # default=str — obsługa dat (obiekt date nie jest serializowalny jako JSON)
     (_tmp_dir() / f'{tmp_id}.json').write_text(
         json.dumps(data, ensure_ascii=False, default=str), encoding='utf-8'
     )
@@ -1608,7 +1874,9 @@ def import_pracownicy(request):
     })
 
 
+# Zapisuje pracowników do DB — DESTRUKTYWNE: usuwa wszystkich i tworzy od nowa
 def _zapisz_pracownikow(data: dict) -> None:
+    # Usuń wszystkich istniejących pracowników (cascade usuwa kompetencje i absencje)
     Pracownik.objects.all().delete()
 
     nowi = []
@@ -1624,7 +1892,8 @@ def _zapisz_pracownikow(data: dict) -> None:
 
         zmiana     = p.get('zmiana', '').strip().upper()
         zmiana_gr  = p.get('zmiana_grupa', '').strip()
-        # Normalizacja: jeśli grupa to sama cyfra (np. "2") a zmiana to litera → "C-2"
+        # Normalizacja: jeśli zmiana_grupa to sama cyfra (np. "2") a zmiana to litera (np. "C")
+        # → scalamy do formatu "C-2" używanego przez algorytm przydziału
         if zmiana and zmiana_gr and zmiana_gr.isdigit():
             zmiana_gr = f'{zmiana}-{zmiana_gr}'
 
@@ -1644,9 +1913,12 @@ def _zapisz_pracownikow(data: dict) -> None:
             arkusz=p.get('_sheet', ''),
         ))
 
+    # bulk_create zwraca listę z przypisanymi PKami — potrzebne do przypisania kompetencji
     created = Pracownik.objects.bulk_create(nowi)
+    # Mapa (imie, nazwisko) → pk — do wiązania kompetencji i absencji z pracownikiem
     pk_by_name: dict[tuple, int] = {(p.imie, p.nazwisko): p.pk for p in created}
 
+    # Zapisz kompetencje dla każdego pracownika
     aktywnosci_cache: dict[tuple, int] = {}
     komp_objs = []
     for prac_data, prac_obj in zip(data['pracownicy'], created):
@@ -1664,6 +1936,7 @@ def _zapisz_pracownikow(data: dict) -> None:
             ))
     KompetencjaPracownika.objects.bulk_create(komp_objs, ignore_conflicts=True)
 
+    # Zapisz absencje — klucz format "Nazwisko|Imie" (z parsera struktury)
     abs_objs = []
     for a in data['absencje']:
         klucz = a.get('pracownik_klucz', '')
@@ -1672,7 +1945,7 @@ def _zapisz_pracownikow(data: dict) -> None:
         nazwisko, imie = klucz.split('|', 1)
         pk = pk_by_name.get((imie, nazwisko))
         if pk is None:
-            continue
+            continue  # pracownik z absencją nie istnieje (tylko w strukturze, nie w kompetencjach)
         try:
             d = date.fromisoformat(a['data'][:10])
         except (ValueError, KeyError):
@@ -1683,8 +1956,10 @@ def _zapisz_pracownikow(data: dict) -> None:
 
 # ── Import: pracownicy APT ─────────────────────────────────────────────────────
 
+# Widok importu APT — obsługuje trzy akcje: upload, confirm, save_mapping (konfiguracja kolumn)
 @login_required
 def import_pracownicy_apt(request):
+    # Aktualne mapowanie kolumn (1–14) → nazwy działów
     kolumny = {k.numer_kolumny: k.nazwa_dzialu for k in KolumnaAPT.objects.all()}
     apt_count = PracownikAPT.objects.count()
     base_ctx = {'kolumny': kolumny, 'numery_kolumn': range(1, 15), 'apt_count': apt_count}
@@ -1694,6 +1969,7 @@ def import_pracownicy_apt(request):
 
     action = request.POST.get('action', 'upload')
 
+    # Akcja: zapisz mapowanie kolumn (admin przypisuje kolumny do działów)
     if action == 'save_mapping':
         KolumnaAPT.objects.all().delete()
         nowe = []
@@ -1710,6 +1986,7 @@ def import_pracownicy_apt(request):
             'apt_count': apt_count,
         })
 
+    # Akcja: potwierdź import (synchronizacja APT: dodaj nowych, zaktualizuj istniejących, usuń usuniętych)
     if action == 'confirm':
         tmp_uuid = request.POST.get('tmp_uuid', '')
         tmp_path = _tmp_dir() / f'{tmp_uuid}.json'
@@ -1732,7 +2009,7 @@ def import_pracownicy_apt(request):
             tmp_path.unlink(missing_ok=True)
         return redirect('import_danych:import_pracownicy_apt')
 
-    # action == 'upload'
+    # Akcja: upload — parsuj plik i pokaż podgląd pierwszych 20 pracowników
     plik = request.FILES.get('plik')
     if not plik:
         messages.error(request, 'Nie wybrano pliku.')
@@ -1769,23 +2046,26 @@ def import_pracownicy_apt(request):
     })
 
 
+# Synchronizuje pracowników APT: dodaje nowych, aktualizuje istniejących, usuwa usuniętych
 def _zapisz_pracownikow_apt(data: dict) -> dict:
     """Sync APT workers: update existing, create new, delete removed. Returns counts."""
     incoming = data['pracownicy_apt']
+    # Mapa (nazwisko, imie) → dane z importu
     incoming_map: dict[tuple, dict] = {
         (p.get('nazwisko', ''), p.get('imie', '')): p for p in incoming
     }
 
+    # Mapa (nazwisko, imie) → obiekt DB — do porównania co dodać/zaktualizować/usunąć
     existing_map: dict[tuple, 'PracownikAPT'] = {
         (p.nazwisko, p.imie): p for p in PracownikAPT.objects.all()
     }
 
-    # Delete workers absent in new file
+    # Usuń pracowników którzy nie wystąpili w nowym pliku
     to_delete_pks = [obj.pk for key, obj in existing_map.items() if key not in incoming_map]
     if to_delete_pks:
         PracownikAPT.objects.filter(pk__in=to_delete_pks).delete()
 
-    # Update existing
+    # Zaktualizuj istniejących pracowników (agencja, płeć, grupa)
     to_update: list['PracownikAPT'] = []
     for key, obj in existing_map.items():
         if key not in incoming_map:
@@ -1798,7 +2078,7 @@ def _zapisz_pracownikow_apt(data: dict) -> dict:
     if to_update:
         PracownikAPT.objects.bulk_update(to_update, ['nazwa_agencji', 'plec', 'grupa'])
 
-    # Create new
+    # Utwórz nowych pracowników
     new_keys = [key for key in incoming_map if key not in existing_map]
     created = PracownikAPT.objects.bulk_create([
         PracownikAPT(
@@ -1811,12 +2091,13 @@ def _zapisz_pracownikow_apt(data: dict) -> dict:
         for key in new_keys
     ])
 
-    # Refresh scores: delete old for updated workers, insert all fresh
+    # Odśwież oceny: usuń stare dla zaktualizowanych, wstaw wszystkie od nowa
     updated_pks = [obj.pk for obj in to_update]
     if updated_pks:
         OcenaAPT.objects.filter(pracownik_apt_id__in=updated_pks).delete()
 
     oceny_objs = []
+    # Oceny dla zaktualizowanych pracowników
     for obj in to_update:
         for numer_str, ocena in incoming_map[(obj.nazwisko, obj.imie)].get('oceny', {}).items():
             oceny_objs.append(OcenaAPT(
@@ -1824,6 +2105,7 @@ def _zapisz_pracownikow_apt(data: dict) -> dict:
                 numer_kolumny=int(numer_str),
                 ocena=float(ocena) if ocena is not None else None,
             ))
+    # Oceny dla nowo utworzonych pracowników
     for obj, key in zip(created, new_keys):
         for numer_str, ocena in incoming_map[key].get('oceny', {}).items():
             oceny_objs.append(OcenaAPT(
