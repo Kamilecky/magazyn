@@ -20,11 +20,17 @@ python manage.py makemigrations
 # Django shell
 python manage.py shell
 
+# Run tests (Django TestCase, not pytest — no pytest.ini/conftest.py in this repo)
+python manage.py test apps.pracownicy
+python manage.py test
+
 # One-off script (always add sys.path + django.setup first)
 python -c "import sys,os; sys.path.insert(0,'c:/...path.../magazyn'); os.environ['DJANGO_SETTINGS_MODULE']='config.settings'; import django; django.setup(); ..."
 ```
 
-No test suite exists. Verify changes by loading the page in the browser at `http://127.0.0.1:8000/`.
+**Two venvs exist for this project**: `magazyn\.venv` and a shared `myvenv` one level up (`My_Django_Projects\myvenv`). Confirm which one the dev server/IDE actually uses before installing a new dependency into only one of them — `pip install` silently succeeding in the wrong venv is a real failure mode here (hit in practice: `networkx` installed only into `.venv`, dev server ran under `myvenv` and crashed with `ModuleNotFoundError` on startup).
+
+Test suite exists for `apps/pracownicy` (`tests.py`, ~20 tests covering the assignment engine). Verify changes by loading the page in the browser at `http://127.0.0.1:8000/`.
 
 ## Architecture
 
@@ -54,21 +60,68 @@ POST /plany/<pk>/przydziel/ → _wykonaj_przydzial() → PrzydzialDzienny.dane (
 GET  /plany/<pk>/wyniki/    → wyniki_przydzialu() → renders wyniki_przydzialu.html
 ```
 
-## Assignment algorithm — `_wykonaj_przydzial` (views.py)
+## Assignment algorithm — NetworkX min-cost flow (rewritten 2026-08-03)
 
-`capacity = ceil(max hourly demand)` for each (activity, shift).
+`_wykonaj_przydzial` (views.py) is now a thin orchestrator around the real engine in
+**`apps/pracownicy/przydzial_flow.py`**. `capacity = ceil(max hourly demand)` for each
+(activity, shift), unchanged from before.
 
-**Phase 1 — pre-reservation by macierz procesowa:**
-For each worker, find the plan activity where their `worker_group_score` is highest. Sort workers by best score descending and assign them greedily. This ensures top-ranked workers from the process matrix land in the correct activity.
+The old greedy phase-based algorithm (tier1/tier2/force-assign) is gone. It's replaced by
+a strict **lexicographic** priority hierarchy — P1 dominates P2 completely, P2 dominates P3
+completely — solved as one min-cost-flow problem per shift bucket instead of hand-rolled
+sorting passes:
 
-**Phase 2 — fill remaining capacity:**
-Candidates must pass `_pasuje_do_aktywnosci` OR have `komp_map` entry OR have `worker_group_score > 0`. Sorted by group score desc → priority dept first → surname.
+- **P1 — shift (A/B/C/D), hard constraint.** `pasuje_zmiana(pracownik, litera)` decides
+  whether a worker→activity edge exists **at all** in the flow graph for that bucket. No
+  edge, no possible assignment — modeled as absence, never as a high cost, so there's no
+  way for a wrong-shift worker to slip through even as a last resort.
+- **P2 — department match, soft but dominant.** `koszt_dopasowania()` fuzzy-matches
+  `Pracownik.dzial` against `Aktywnosc.dzial` (`dzialy_fuzzy_match()`, difflib
+  `SequenceMatcher`, accept ≥0.85, log-as-review-warning in [0.70, 0.85)) OR the existing
+  departament-code keyword check (`_dept_matches_akt`, kept in views.py). Mismatch adds
+  `PRZYDZIAL_PENALTY_DZIAL` (default 10 000) to the edge cost — large enough that no
+  competency score (P3, capped at `PRZYDZIAL_KOSZT_MAX_KOMPETENCJI`, default 10) can ever
+  outweigh it.
+- **P3 — competency score.** Only breaks ties among workers who already passed P1 and share
+  the same P2 status. Missing competency data doesn't raise — it's costed as the worst score
+  plus a small `PRZYDZIAL_BRAK_KOMPETENCJI_PENALTY` (default 1), still far below the P2
+  penalty.
 
-**Phase 3 — APT workers** fill whatever capacity remains, sorted by `comp_apt[(apt_pk, akt_pk)]` desc.
+`rozwiaz_zmiane()` builds one graph per bucket (source → eligible workers, capacity 1 each →
+activities, capacity = `wymagana` → sink) and solves it with `networkx.max_flow_min_cost`,
+which maximizes the *number* of assignments first and only then minimizes cost among
+maximum-flow solutions — this is what lets a department-mismatched priority worker still get
+placed (paying the P2 penalty) when no in-department candidate exists for that slot, without
+a separate "force-assign" pass.
 
-**Force-assign:** priority-dept workers left unassigned after phases 1–2 are placed in their first matching activity.
+**Etat always before APT, by design (not a model limitation):** each shift bucket is solved
+as *two* sequential flow problems — etat workers first, then APT against whatever residual
+capacity remains (`rozwiaz_zmiane` called again with `residual = wymagana - already_filled`).
+A well-matched APT worker can never displace a weaker etat worker. This was an explicit
+choice, confirmed with the user, over unifying etat+APT into one competing pool.
 
-**Fillers:** unmatched workers go to `__fillers__` key → rendered as "(bez przypisanej aktywności)".
+**Audit fields** on every real assignment dict (new): `dzial_ok` (bool), `fuzzy_score`
+(float), `kompetencja_uzyta` (float actually used for costing) — lets a future report
+distinguish "ideal match" (shift+dept+high competency) from "emergency fill" (shift OK,
+dept mismatched, used only because nothing better was available). Not yet surfaced in
+`wyniki_przydzialu.html` — the template only reads named attributes, so these are additive
+and safe, just unused by the UI today.
+
+**Fillers:** unmatched workers still go to `__fillers__` key → rendered as "(bez przypisanej
+aktywności)" — this part is unchanged. `_pasuje_do_aktywnosci` still exists in views.py but is
+now used *only* to classify filler reason (`capacity` vs `no_match`), not to decide
+assignments.
+
+**Deliberate exception to P1:** workers with both `zmiana` and `zmiana_grupa` empty ("bez
+zmiany") have no shift to be hard-filtered against — they fill residual gaps across shifts
+1–3 (never shift D) in a separate P1-exempt flow pass, after the main per-shift solves. Same
+for any APT worker left over after their own shift's solve. **This is not a bug**: a
+compliance check that flags every `pasuje_zmiana() == False` assignment as a violation will
+produce false positives for exactly this cohort — see `PrzydzialShiftComplianceTestCase` in
+`tests.py` for the correct check (only workers with a *declared* shift preference count).
+
+See `apps/pracownicy/przydzial_flow.py` docstrings and `apps/pracownicy/tests.py` for the
+full cost model and test coverage.
 
 ### `worker_group_score[(worker_pk, plan_akt_pk)]`
 
@@ -76,7 +129,7 @@ Built by fuzzy-matching each plan activity to process groups, collecting all `cz
 
 ### Shift assignment
 
-`KonfiguracjaZmian` (singleton pk=1) maps shift number → letter (A/B/C). Worker goes to shift where `zmiana_grupa` starts with the corresponding letter. Workers with no `zmiana_grupa` assigned to the first shift where they haven't appeared globally.
+`KonfiguracjaZmian` (singleton pk=1) maps shift number → letter (A/B/C/D). `pasuje_zmiana(pracownik, litera)` (in `przydzial_flow.py`) decides membership: exact match on `zmiana`, else prefix match on `zmiana_grupa` (e.g. `"A-1"` matches letter `"A"`). Workers with neither field set ("bez zmiany") are exempt from this check and fill residual gaps in shifts 1–3 only, in a separate pass after the main per-shift solves — see the Assignment algorithm section above.
 
 ## Fuzzy-matching system (module-level in views.py)
 
@@ -119,7 +172,7 @@ JSON blobs from context: `MODAL_DATA`, `WORKER_DATA`, `DZIAL_DATA` (rendered via
 ## Key model gotchas
 
 - **`Pracownik` import is destructive**: every import calls `Pracownik.objects.all().delete()` then `bulk_create`. Always warn before importing workers.
-- **`PrzydzialDzienny.dane`** keys: outer key = zmiana string (`"1"`, `"2"`, `"3"`); inner keys = `str(akt_pk)` or `"__fillers__"`.
+- **`PrzydzialDzienny.dane`** keys: outer key = zmiana string — `"1"`/`"2"`/`"3"` (real shifts), `"4"` (shift D/PRASA-KDR, only present if any D-shift worker exists), `"0"` (leftover "bez zmiany" workers with no match at all, fillers-only). Inner keys = `str(akt_pk)` or `"__fillers__"`. An optional top-level `"__ostrzezenia_dzialow__"` key (list of strings) holds P2 fuzzy-match review warnings (ratio in [0.70, 0.85)) when any occurred.
 - **`KonfiguracjaZmian.pobierz()`** — singleton via `get_or_create(pk=1)`. Don't create additional instances.
 - **`Aktywnosc` unique_together `('nazwa', 'dzial')`** — same activity name can appear in multiple działy.
 - `KompetencjaPracownika` only stores rows where `wynik > 0`. Absence of a row means score=0, not missing data.

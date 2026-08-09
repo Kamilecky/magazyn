@@ -7,4 +7,5 @@ xhtml2pdf>=0.2.11
 openpyxl==3.1.5
 whitenoise==6.8.2
 cryptography==43.0.3
+networkx==3.4.2
 # openai i httpx usunięte — OpenAI wyłączone w v2.0

@@ -104,6 +104,11 @@ OPENAI_API_KEY = env('OPENAI_API_KEY', default='')
 
 MAX_IMPORT_FILE_SIZE_MB = env.int('MAX_IMPORT_FILE_SIZE_MB', default=10)
 
+# apps.pracownicy — silnik przydziału (NetworkX min-cost flow), patrz przydzial_flow.py
+PRZYDZIAL_PENALTY_DZIAL = env.int('PRZYDZIAL_PENALTY_DZIAL', default=10_000)
+PRZYDZIAL_KOSZT_MAX_KOMPETENCJI = env.int('PRZYDZIAL_KOSZT_MAX_KOMPETENCJI', default=10)
+PRZYDZIAL_BRAK_KOMPETENCJI_PENALTY = env.int('PRZYDZIAL_BRAK_KOMPETENCJI_PENALTY', default=1)
+
 if not DEBUG:
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True

@@ -34,6 +34,7 @@ from .parsers.plan_dzienny import parsuj_plan_dzienny
 from .parsers.pracownicy_apt import parsuj_pracownikow_apt
 from .parsers.struktura import parsuj_strukture
 from .grupy_procesowe import GRUPY_PROCESOWE as _GP
+from . import przydzial_flow
 
 # ── Fuzzy-matching aktywności → grupy procesowe (moduł globalny) ──────────────
 # Kompilowane raz przy starcie serwera, nie przy każdym żądaniu
@@ -506,17 +507,26 @@ def _pasuje_do_aktywnosci(p, akt_nazwa_norm: str, akt_dzial: str) -> bool:
 
 def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
     """
-    Algorytm przydziału pracowników do aktywności planu dziennego.
+    Algorytm przydziału pracowników do aktywności planu dziennego — NetworkX min-cost flow.
 
-    Dla każdej (aktywność, zmiana) z planu:
-      capacity = ceil(max godzinowego zapotrzebowania)
+    Dla każdej (aktywność, zmiana) z planu: capacity = ceil(max godzinowego zapotrzebowania).
 
-    Dwie fazy przydziału (etatowi → APT):
-      Faza 1: dział-first — tier1 (pasujący dział/departament) → tier2 (powiązanie przez score/kompetencję)
-              w obu tierach sortowanie wg ocen z macierzy procesowej DESC
-      Faza 2: APT wypełniają pozostałą pojemność wg ocen
+    Hierarchia priorytetów jest leksykograficzna, nie ważona (patrz przydzial_flow.py):
+      P1 — zgodność zmiany (A/B/C/D): twardy filtr — pracownik niezgodny ze zmianą
+           w ogóle nie wchodzi do grafu przepływu tego "bucketu".
+      P2 — zgodność działu (fuzzy, difflib + kod departamentu): PENALTY_DZIAL dominuje
+           nad całym zakresem kosztu P3, więc żadna kompetencja nie przebije złego działu.
+      P3 — ocena kompetencji: różnicuje wyłącznie kandydatów już zgodnych w P1 i P2.
 
-    Priorytetowi (IN/OB/FF/ZW/PR) bez dopasowania → force-assign do pierwszej aktywności z ich działu.
+    `networkx.max_flow_min_cost` maksymalizuje liczbę przydzieleń PRZED minimalizacją
+    kosztu — dzięki temu priorytetowi (IN/OB/FF/ZW/PR) bez dopasowania działu wciąż
+    mogą zostać przydzieleni (z karą PENALTY_DZIAL), jeśli to jedyny sposób wypełnienia
+    wolnego miejsca, bez osobnego "force-assign".
+
+    Etatowi i APT rozwiązywani są w dwóch kolejnych przepływach na bucket: etat najpierw,
+    APT wypełnia wyłącznie pozostałą pojemność — APT nigdy nie wypiera etatowego
+    pracownika, nawet przy wyższej kompetencji (decyzja świadoma, nie ograniczenie modelu).
+
     Nieprzydzieleni → sekcja __fillers__ (bez przypisanej aktywności).
     """
     # 1. Wczytaj zapotrzebowanie godzinowe: (akt_pk, zmiana) → {godzina: liczba_osob}
@@ -625,13 +635,83 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
                 comp_apt[key] = max(comp_apt.get(key, 0.0), float(ocena.ocena))
     apt_pk_to_p = {apt.pk: apt for apt in apt_pracownicy}
 
+    # Crosswalk fuzzy dopasowania działów (P2) — budowany raz na cały przebieg, nie per para
+    pary_dzialow = {(p.dzial, a.dzial) for p in pracownicy for a in akt_cache.values()}
+    crosswalk, ostrzezenia_dzialow = przydzial_flow.buduj_crosswalk_dzialow(pary_dzialow)
+
+    # Koszt krawędzi pracownik etatowy→aktywność (P2 fuzzy/departament + P3 kompetencja)
+    def _koszt_etat(w, a):
+        p = pk_to_p[w['key']]
+        akt = akt_cache[a['pk']]
+        wynik = worker_group_score.get((p.pk, a['pk']))
+        dept_kod_ok = _dept_matches_akt(p.departament, akt.dzial)
+        return przydzial_flow.koszt_dopasowania(p.dzial, akt.dzial, wynik, crosswalk, dept_kod_ok=dept_kod_ok)
+
+    # Koszt krawędzi pracownik APT→aktywność — APT nie mają pola `dzial` w danych
+    # źródłowych, więc kosztuje się ich wyłącznie kompetencją (dept_kod_ok wymuszone)
+    def _koszt_apt(w, a):
+        apt = apt_pk_to_p[w['key']]
+        wynik = comp_apt.get((apt.pk, a['pk']))
+        return przydzial_flow.koszt_dopasowania('', '', wynik, crosswalk, dept_kod_ok=True)
+
+    # Buduje wpis wyniku dla jednego przydzielonego pracownika (etat lub APT),
+    # ujednolicone pola niezależnie od źródła + nowe pola audytowe P2/P3
+    def _worker_dict(pk, obj, koszt, apt) -> dict:
+        return {
+            'pk': pk, 'imie': obj.imie, 'nazwisko': obj.nazwisko,
+            'zmiana_grupa': obj.grupa if apt else obj.zmiana_grupa,
+            'nieobecny': False,
+            'wynik': round(koszt.kompetencja, 1) if not koszt.brak_danych else None,
+            'zapychacz': False, 'apt': apt,
+            # Pola audytowe (P2/P3) — pozwalają odróżnić dopasowanie idealne od awaryjnego
+            'dzial_ok': koszt.dzial_ok,
+            'fuzzy_score': round(koszt.fuzzy_score, 2),
+            'kompetencja_uzyta': round(koszt.kompetencja, 1),
+        }
+
+    def _rozwiaz_bucket(eligible_etat_pks, eligible_apt_pks, shift_acts):
+        """Rozwiązuje jeden bucket zmiany jako DWA kolejne przepływy min-cost:
+        etat najpierw (P1/P2/P3), APT wypełnia wyłącznie pozostałą pojemność —
+        APT nigdy nie wypiera etatowego pracownika (decyzja świadoma, patrz plan)."""
+        activities_spec = [{'pk': akt_pk, 'capacity': cap} for akt_pk, cap, _ in shift_acts]
+        # Słownik wynikowy inicjalizowany pustymi listami dla KAŻDEJ aktywności bucketu —
+        # nawet tej, która ostatecznie nie dostanie nikogo (musi mieć klucz w wyniku).
+        akt_assignments: dict[int, list[dict]] = {akt_pk: [] for akt_pk, _, _ in shift_acts}
+
+        # --- Runda 1: etatowi konkurują między sobą na pełnej pojemności każdej aktywności ---
+        etat_spec = [{'key': pk} for pk in eligible_etat_pks]
+        etat_wynik = przydzial_flow.rozwiaz_zmiane(etat_spec, activities_spec, _koszt_etat)
+        uzyci_etat: set[int] = set()
+        for akt_pk in akt_assignments:
+            for pk, koszt in etat_wynik.get(akt_pk, []):
+                akt_assignments[akt_pk].append(_worker_dict(pk, pk_to_p[pk], koszt, apt=False))
+                uzyci_etat.add(pk)
+
+        # --- Runda 2: APT dostaje tylko to, czego etatowi nie zajęli (pojemność resztkowa) ---
+        # Osobne, następujące po sobie wywołanie rozwiaz_zmiane — nie jeden wspólny graf —
+        # to właśnie gwarantuje "etat zawsze przed APT": APT fizycznie nie widzi capacity,
+        # które etatowi już skonsumowali, więc nie może z nimi konkurować o te same miejsca.
+        residual_spec = [
+            {'pk': akt_pk, 'capacity': cap - len(akt_assignments[akt_pk])}
+            for akt_pk, cap, _ in shift_acts
+        ]
+        apt_spec = [{'key': pk} for pk in eligible_apt_pks]
+        apt_wynik = przydzial_flow.rozwiaz_zmiane(apt_spec, residual_spec, _koszt_apt)
+        uzyci_apt: set[int] = set()
+        for akt_pk in akt_assignments:
+            for pk, koszt in apt_wynik.get(akt_pk, []):
+                akt_assignments[akt_pk].append(_worker_dict(pk, apt_pk_to_p[pk], koszt, apt=True))
+                uzyci_apt.add(pk)
+
+        # Sortowanie tylko kosmetyczne (wyświetlanie) — kolejność w liście nie wpływa
+        # na to, KTO został przydzielony, o tym zdecydował już min-cost flow powyżej.
+        for akt_pk in akt_assignments:
+            akt_assignments[akt_pk].sort(key=lambda w: (-w['kompetencja_uzyta'], w['nazwisko']))
+
+        return akt_assignments, uzyci_etat, uzyci_apt
+
     result: dict = {}
-
-    # Zbiory globalnie przydzielonych — deduplicacja dla pracowników bez zmiana_grupy
-    globally_assigned_prac: set[int] = set()
-    globally_assigned_apt: set[int] = set()
     globally_absent_shown: set[int] = set()  # nieobecni już umieszczeni w fillers jakiejś zmiany
-
     litera_map = KonfiguracjaZmian.pobierz().jako_slownik()
 
     # Pętla przez 3 zmiany (I, II, III); zmiana D obsługiwana osobno po pętli
@@ -651,126 +731,36 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
             shift_acts.append((akt_pk, math.ceil(max_wymagane), g))
         shift_acts.sort(key=lambda x: -x[1])
 
-        # Sprawdza czy pracownik należy do tej zmiany.
-        # Priorytet: pole zmiana (A/B/C/D), fallback na pierwszą literę zmiana_grupa (A-1 → A).
-        def _w_tej_zmianie(p) -> bool:
-            z = (p.zmiana or '').upper()
-            zg = (p.zmiana_grupa or '').upper()
-            return z == litera or zg.startswith(litera)
-
-        # Pracownicy priorytetowi (IN/OB/FF/ZW/PR) tej zmiany, obecni w dniu planu
-        unassigned_priority: set[int] = {
-            p.pk for p in pracownicy
-            if _w_tej_zmianie(p) and p.departament.upper() in _PRIORITY_DEPTS
-            and p.pk not in nieobecni_pks
-        }
-        # Pozostali pracownicy (inne departamenty) tej zmiany
-        unassigned_others: set[int] = {
-            p.pk for p in pracownicy
-            if _w_tej_zmianie(p) and p.departament.upper() not in _PRIORITY_DEPTS
-            and p.pk not in nieobecni_pks
-        }
-
-        def _apt_w_tej_zmianie(apt) -> bool:
-            zg = apt.grupa.upper() if apt.grupa else ''
-            return bool(zg) and zg.startswith(litera)
-
-        unassigned_apt: set[int] = {
-            apt.pk for apt in apt_pracownicy if _apt_w_tej_zmianie(apt)
-        }
-
-        # Słowniki wyników dla tej zmiany: akt_pk → lista przydzielonych pracowników
-        akt_assignments: dict[int, list[dict]] = {}
-        akt_meta: dict[int, tuple] = {}
-        for akt_pk, capacity, godziny in shift_acts:
-            akt_assignments[akt_pk] = []
-            akt_meta[akt_pk] = (capacity, godziny)
-
+        akt_meta: dict[int, tuple] = {akt_pk: (cap, g) for akt_pk, cap, g in shift_acts}
         shift_akt_pks = {akt_pk for akt_pk, _, _ in shift_acts}
 
-        # --- Faza 1: Przydzielanie wg priorytetu: zmiana → dział → oceny z macierzy ---
-        # Zmiana wyegzekwowana przez unassigned_priority/unassigned_others (_w_tej_zmianie).
-        # Tier 1: pasujący dział (dzial/departament pracownika ↔ dzial aktywności) — score DESC
-        # Tier 2: inny dział, ale powiązanie z aktywnością (kompetencja/score) — score DESC
-        for akt_pk, capacity, _ in shift_acts:
-            akt = akt_cache[akt_pk]
-            assigned = akt_assignments[akt_pk]
-            norm_nazwa = _norm(akt.nazwa)
-            akt_dzial = akt.dzial
+        # P1 — twardy filtr zgodności zmiany: tylko ci wchodzą do grafu przepływu tego bucketu.
+        # Rozdział priorytetowi/pozostali służy WYŁĄCZNIE klasyfikacji fillerów niżej
+        # (sekcja "Fillers") — o samym przydziale i tak decyduje wspólny koszt P2/P3
+        # w _rozwiaz_bucket, priorytet działowy nie daje żadnej dodatkowej przewagi w grafie.
+        eligible_priority = [
+            p.pk for p in pracownicy
+            if przydzial_flow.pasuje_zmiana(p, litera) and p.departament.upper() in _PRIORITY_DEPTS
+            and p.pk not in nieobecni_pks
+        ]
+        eligible_others = [
+            p.pk for p in pracownicy
+            if przydzial_flow.pasuje_zmiana(p, litera) and p.departament.upper() not in _PRIORITY_DEPTS
+            and p.pk not in nieobecni_pks
+        ]
+        eligible_etat_pks = eligible_priority + eligible_others
+        eligible_apt_pks = [apt.pk for apt in apt_pracownicy if przydzial_flow.apt_pasuje_zmiana(apt, litera)]
 
-            if len(assigned) >= capacity:
-                continue
+        # Tu faktycznie zapada decyzja "kto gdzie trafia" — całą resztę funkcji
+        # stanowi już tylko budowanie JSON-a wyniku i klasyfikacja nieprzydzielonych.
+        akt_assignments, uzyci_etat, uzyci_apt = _rozwiaz_bucket(
+            eligible_etat_pks, eligible_apt_pks, shift_acts
+        )
 
-            combined = unassigned_priority | unassigned_others
-
-            # Domyślny argument (_dzial=akt_dzial) zamraża wartość zmiennej pętli w domknięciu
-            def _dept_ok(pk: int, _dzial=akt_dzial) -> bool:
-                p = pk_to_p[pk]
-                return (_dzialy_match(p.dzial, _dzial) or _dept_matches_akt(p.departament, _dzial))
-
-            def _has_conn(pk: int, _apk=akt_pk, _nn=norm_nazwa, _dzial=akt_dzial) -> bool:
-                return (
-                    _pasuje_do_aktywnosci(pk_to_p[pk], _nn, _dzial)
-                    or _apk in komp_map.get(pk, set())
-                    or worker_group_score.get((pk, _apk), 0.0) > 0
-                )
-
-            tier1 = sorted(
-                (pk for pk in combined if _dept_ok(pk)),
-                key=lambda pk: (-worker_group_score.get((pk, akt_pk), 0.0), pk_to_p[pk].nazwisko)
-            )
-            tier2 = sorted(
-                (pk for pk in combined if not _dept_ok(pk) and _has_conn(pk)),
-                key=lambda pk: (-worker_group_score.get((pk, akt_pk), 0.0), pk_to_p[pk].nazwisko)
-            )
-
-            for pk in tier1 + tier2:
-                if len(assigned) >= capacity:
-                    break
-                obj = pk_to_p[pk]
-                score = worker_group_score.get((pk, akt_pk))
-                assigned.append({
-                    'pk': pk, 'imie': obj.imie, 'nazwisko': obj.nazwisko,
-                    'zmiana_grupa': obj.zmiana_grupa,
-                    'nieobecny': pk in nieobecni_pks,
-                    'wynik': round(score, 1) if score else None,
-                    'zapychacz': False, 'apt': False,
-                })
-                unassigned_priority.discard(pk)
-                unassigned_others.discard(pk)
-
-        # --- Faza 3: APT wypełnia pozostałą pojemność po wszystkich etatowych ---
-        # Sortuj APT malejąco po ocenie dla tej aktywności
-        for akt_pk, capacity, _ in shift_acts:
-            assigned = akt_assignments[akt_pk]
-            apt_by_score = sorted(unassigned_apt,
-                                  key=lambda pk: -comp_apt.get((pk, akt_pk), 0.0))
-            for apt_pk2 in apt_by_score[:capacity - len(assigned)]:
-                obj = apt_pk_to_p[apt_pk2]
-                assigned.append({'pk': apt_pk2, 'imie': obj.imie, 'nazwisko': obj.nazwisko,
-                                  'zmiana_grupa': obj.grupa,
-                                  'nieobecny': False,
-                                  'wynik': None, 'zapychacz': False, 'apt': True})
-                unassigned_apt.discard(apt_pk2)
-
-        # Force-assign: priorytetowi bez dopasowania trafiają do pierwszej aktywności z ich działu
-        for pk in list(unassigned_priority):
-            obj = pk_to_p[pk]
-            for akt_pk, cap_fa, _ in shift_acts:
-                if len(akt_assignments.get(akt_pk, [])) >= cap_fa:
-                    continue
-                akt_dzial_fa = akt_cache[akt_pk].dzial
-                if (_dzialy_match(obj.dzial, akt_dzial_fa)
-                        or _dept_matches_akt(obj.departament, akt_dzial_fa)
-                        or akt_pk in komp_map.get(pk, set())):
-                    akt_assignments.setdefault(akt_pk, []).append({
-                        'pk': pk, 'imie': obj.imie, 'nazwisko': obj.nazwisko,
-                        'zmiana_grupa': obj.zmiana_grupa,
-                        'nieobecny': pk in nieobecni_pks,
-                        'wynik': None, 'zapychacz': False, 'apt': False,
-                    })
-                    unassigned_priority.discard(pk)
-                    break
+        # Kto z uprawnionych NIE dostał miejsca — trafi do sekcji fillers niżej
+        unassigned_priority = {pk for pk in eligible_priority if pk not in uzyci_etat}
+        unassigned_others = {pk for pk in eligible_others if pk not in uzyci_etat}
+        unassigned_apt = {pk for pk in eligible_apt_pks if pk not in uzyci_apt}
 
         # Zbuduj wynik zmiany jako słownik: str(akt_pk) → dane aktywności
         zmiana_result: dict = {}
@@ -810,16 +800,13 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
         for p in pracownicy:
             if p.pk not in nieobecni_pks or p.pk in globally_absent_shown:
                 continue
-            z = (p.zmiana or '').upper()
-            zg = (p.zmiana_grupa or '').upper()
-            if z == litera or zg.startswith(litera):
+            if przydzial_flow.pasuje_zmiana(p, litera):
                 fillers.append({'pk': p.pk, 'imie': p.imie, 'nazwisko': p.nazwisko,
                                 'zmiana_grupa': p.zmiana_grupa,
                                 'nieobecny': True, 'powod': 'nieobecny',
                                 'sektor': _sektor(p.arkusz),
                                 'wynik': None, 'zapychacz': True, 'apt': False})
                 globally_absent_shown.add(p.pk)
-                globally_assigned_prac.add(p.pk)  # zapobiega podwójnemu pojawieniu w kolejnych zmianach
         # Nieprzydzieleni APT → fillers
         for apt_pk in unassigned_apt:
             obj = apt_pk_to_p[apt_pk]
@@ -845,25 +832,11 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
                 'godziny': {},
             }
 
-        # Zarejestruj globalnie WSZYSTKICH pracowników tej zmiany (przydzielonych i fillerów)
-        # — gdyby rejestrować tylko przydzielonych, pracownicy bez zmiana_grupy mogliby
-        #   trafić do fillers zmiany I i ponownie dostać szansę na przydział w zmianie II
-        for p in pracownicy:
-            if _w_tej_zmianie(p):
-                globally_assigned_prac.add(p.pk)
-        for apt in apt_pracownicy:
-            if _apt_w_tej_zmianie(apt):
-                globally_assigned_apt.add(apt.pk)
-
         result[str(zmiana)] = zmiana_result
 
     # ─── Zmiana D (PRASA / KDR) — osobna logika dla pracowników ze zmiana_grupy zaczynającej się od 'D' ───
     litera_d = litera_map.get(4, 'D')
-    d_pracownicy = [
-        p for p in pracownicy
-        if (p.zmiana or '').upper() == litera_d
-        or (p.zmiana_grupa or '').upper().startswith(litera_d)
-    ]
+    d_pracownicy = [p for p in pracownicy if przydzial_flow.pasuje_zmiana(p, litera_d)]
     d_prac_pks: set[int] = {p.pk for p in d_pracownicy}
 
     if d_prac_pks:
@@ -902,71 +875,18 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
             d_shift_acts.append((akt_pk, math.ceil(max_wym), g))
         d_shift_acts.sort(key=lambda x: -x[1])
 
-        d_shift_akt_pks = {apk for apk, _, _ in d_shift_acts}
-        d_akt_assignments: dict[int, list[dict]] = {apk: [] for apk, _, _ in d_shift_acts}
         d_akt_meta: dict[int, tuple] = {apk: (cap, g) for apk, cap, g in d_shift_acts}
-        # Pracownicy zmiany D, którzy są obecni
-        d_unassigned: set[int] = {pk for pk in d_prac_pks if pk not in nieobecni_pks}
+        d_shift_akt_pks = {apk for apk, _, _ in d_shift_acts}
 
-        d_apt_list = [apt for apt in apt_pracownicy if (apt.grupa or '').upper().startswith(litera_d)]
-        d_unassigned_apt: set[int] = {apt.pk for apt in d_apt_list}
+        d_eligible_etat = [pk for pk in d_prac_pks if pk not in nieobecni_pks]
+        d_eligible_apt = [apt.pk for apt in apt_pracownicy if (apt.grupa or '').upper().startswith(litera_d)]
 
-        # Faza 1 D: dział-first (ta sama logika co zmiana 1/2/3)
-        for apk, cap, _ in d_shift_acts:
-            akt = akt_cache[apk]
-            assigned = d_akt_assignments[apk]
-            norm_nazwa_d = _norm(akt.nazwa)
-            akt_dzial_d = akt.dzial
+        d_akt_assignments, d_uzyci_etat, d_uzyci_apt = _rozwiaz_bucket(
+            d_eligible_etat, d_eligible_apt, d_shift_acts
+        )
 
-            if len(assigned) >= cap:
-                continue
-
-            def _dept_ok_d(pk: int, _dzial=akt_dzial_d) -> bool:
-                p = pk_to_p[pk]
-                return (_dzialy_match(p.dzial, _dzial) or _dept_matches_akt(p.departament, _dzial))
-
-            def _has_conn_d(pk: int, _apk=apk, _nn=norm_nazwa_d, _dzial=akt_dzial_d) -> bool:
-                return (
-                    _pasuje_do_aktywnosci(pk_to_p[pk], _nn, _dzial)
-                    or _apk in komp_map.get(pk, set())
-                    or worker_group_score.get((pk, _apk), 0.0) > 0
-                )
-
-            tier1_d = sorted(
-                (pk for pk in d_unassigned if _dept_ok_d(pk)),
-                key=lambda pk: (-worker_group_score.get((pk, apk), 0.0), pk_to_p[pk].nazwisko)
-            )
-            tier2_d = sorted(
-                (pk for pk in d_unassigned if not _dept_ok_d(pk) and _has_conn_d(pk)),
-                key=lambda pk: (-worker_group_score.get((pk, apk), 0.0), pk_to_p[pk].nazwisko)
-            )
-
-            for pk in tier1_d + tier2_d:
-                if len(assigned) >= cap:
-                    break
-                obj = pk_to_p[pk]
-                s = worker_group_score.get((pk, apk))
-                assigned.append({
-                    'pk': pk, 'imie': obj.imie, 'nazwisko': obj.nazwisko,
-                    'zmiana_grupa': obj.zmiana_grupa,
-                    'nieobecny': pk in nieobecni_pks,
-                    'wynik': round(s, 1) if s else None, 'zapychacz': False, 'apt': False,
-                })
-                d_unassigned.discard(pk)
-
-        # Faza 3 D: APT wypełnia pozostałą pojemność
-        for apk, cap, _ in d_shift_acts:
-            assigned = d_akt_assignments[apk]
-            apt_sorted = sorted(d_unassigned_apt, key=lambda pk: -comp_apt.get((pk, apk), 0.0))
-            for apt_pk2 in apt_sorted[:cap - len(assigned)]:
-                obj = apt_pk_to_p[apt_pk2]
-                assigned.append({
-                    'pk': apt_pk2, 'imie': obj.imie, 'nazwisko': obj.nazwisko,
-                    'zmiana_grupa': obj.grupa,
-                    'nieobecny': False,
-                    'wynik': None, 'zapychacz': False, 'apt': True,
-                })
-                d_unassigned_apt.discard(apt_pk2)
+        d_unassigned = {pk for pk in d_eligible_etat if pk not in d_uzyci_etat}
+        d_unassigned_apt = {pk for pk in d_eligible_apt if pk not in d_uzyci_apt}
 
         # Zbuduj wynik zmiany D
         d_result: dict = {}
@@ -1032,122 +952,95 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
         # Wynik zmiany D zapisany pod kluczem "4"
         result['4'] = d_result
 
-    # === POST-PROCESSING: No-zmiana workers fill remaining shift capacity ===
-    # Workers WITH zmiana_grupo were placed by the main loops above (zmiana first).
-    # Workers WITHOUT zmiana_grupo are now assigned greedily to activities with
-    # remaining capacity, using the same dept→score priority within each shift.
-    # A worker is placed in exactly one shift; those with no match go to "Bez zmiany".
-
+    # === POST-PROCESSING: pracownicy "bez zmiany" wypełniają pozostałą pojemność zmian 1-3 ===
+    # P1 nie ma tu zastosowania (brak przypisanej zmiany) — zwolnieni z twardego filtra,
+    # ale nadal kosztowani przez P2/P3 jak każdy inny pracownik etatowy. Rozwiązywane jako
+    # flow na resztkowej pojemności każdej zmiany (globalnie optymalne wypełnienie luk,
+    # nie zachłanne "największa luka pierwsza" jak w poprzedniej wersji algorytmu).
     bez_zmiany_prac = [
         p for p in pracownicy
         if not (p.zmiana or '').strip() and not (p.zmiana_grupa or '').strip()
     ]
     unassigned_bz_pks: set[int] = {p.pk for p in bez_zmiany_prac if p.pk not in nieobecni_pks}
-    bz_pk_to_p: dict = {p.pk: p for p in bez_zmiany_prac}
 
     if unassigned_bz_pks:
         for zmiana_str in ['1', '2', '3']:
             if zmiana_str not in result:
                 continue
-            # Activities with remaining capacity, sorted by gap DESC (fill most-needed first)
-            acts_need: list = []
+            # Ile miejsc zostało wolnych PO głównym przebiegu etat+APT tej zmiany —
+            # przeliczane na nowo w każdej iteracji, bo poprzednia iteracja (inna zmiana)
+            # mogła nie zmienić nic tutaj, ale kolejność zmian 1→2→3 musi być zachowana
+            # (pracownik "bez zmiany" zużyty w zmianie 1 nie może też trafić do zmiany 2).
+            residual_spec = []
             for akt_key, akt_data in result[zmiana_str].items():
                 if akt_key == '__fillers__':
                     continue
-                current = len(akt_data['pracownicy'])
-                cap = akt_data['wymagana']
-                if current < cap:
-                    acts_need.append((int(akt_key), cap - current))
-            acts_need.sort(key=lambda x: -x[1])
+                residual = akt_data['wymagana'] - len(akt_data['pracownicy'])
+                if residual > 0:
+                    residual_spec.append({'pk': int(akt_key), 'capacity': residual})
+            if not residual_spec:
+                continue  # ta zmiana jest już w pełni obsadzona, nie ma czego szukać
 
-            for akt_pk_bz, _ in acts_need:
-                if not unassigned_bz_pks:
-                    break
+            bz_spec = [{'key': pk} for pk in unassigned_bz_pks]
+            bz_wynik = przydzial_flow.rozwiaz_zmiane(bz_spec, residual_spec, _koszt_etat)
+            for akt_pk_bz, przydzieleni in bz_wynik.items():
+                if not przydzieleni:
+                    continue
                 akt_key_bz = str(akt_pk_bz)
-                akt_bz = akt_cache[akt_pk_bz]
-                akt_dzial_bz = akt_bz.dzial
-                norm_nazwa_bz = _norm(akt_bz.nazwa)
-
-                current_ct = len(result[zmiana_str][akt_key_bz]['pracownicy'])
-                cap_bz = result[zmiana_str][akt_key_bz]['wymagana']
-
-                def _dept_ok_bz(pk, _dz=akt_dzial_bz):
-                    p = bz_pk_to_p[pk]
-                    return _dzialy_match(p.dzial, _dz) or _dept_matches_akt(p.departament, _dz)
-
-                def _has_conn_bz(pk, _apk=akt_pk_bz, _nn=norm_nazwa_bz, _dz=akt_dzial_bz):
-                    p = bz_pk_to_p[pk]
-                    return (
-                        _pasuje_do_aktywnosci(p, _nn, _dz)
-                        or _apk in komp_map.get(pk, set())
-                        or worker_group_score.get((pk, _apk), 0.0) > 0
+                for pk, koszt in przydzieleni:
+                    result[zmiana_str][akt_key_bz]['pracownicy'].append(
+                        _worker_dict(pk, pk_to_p[pk], koszt, apt=False)
                     )
-
-                tier1_bz = sorted(
-                    (pk for pk in unassigned_bz_pks if _dept_ok_bz(pk)),
-                    key=lambda pk: (-worker_group_score.get((pk, akt_pk_bz), 0.0), bz_pk_to_p[pk].nazwisko)
-                )
-                tier2_bz = sorted(
-                    (pk for pk in unassigned_bz_pks if not _dept_ok_bz(pk) and _has_conn_bz(pk)),
-                    key=lambda pk: (-worker_group_score.get((pk, akt_pk_bz), 0.0), bz_pk_to_p[pk].nazwisko)
-                )
-
-                for pk in tier1_bz + tier2_bz:
-                    if current_ct >= cap_bz:
-                        break
-                    p = bz_pk_to_p[pk]
-                    wynik = worker_group_score.get((pk, akt_pk_bz))
-                    result[zmiana_str][akt_key_bz]['pracownicy'].append({
-                        'pk': pk, 'imie': p.imie, 'nazwisko': p.nazwisko,
-                        'zmiana_grupa': p.zmiana_grupa,
-                        'nieobecny': False,
-                        'wynik': round(wynik, 1) if wynik else None,
-                        'zapychacz': False, 'apt': False,
-                    })
                     unassigned_bz_pks.discard(pk)
-                    current_ct += 1
+                result[zmiana_str][akt_key_bz]['pracownicy'].sort(
+                    key=lambda w: (-w['kompetencja_uzyta'], w['nazwisko'])
+                )
 
-    # === POST-PROCESSING 2: APT workers fill remaining capacity ===
-    # APT workers have no shift group (grupa='') and no competency scores.
-    # They fill whatever gaps remain after regular + no-zmiana workers are placed.
-    # Each APT worker is placed in exactly one activity (globally tracked).
-
-    apt_globally_used: set[int] = set()
-    apts_available = sorted(apt_pracownicy, key=lambda a: (a.nazwisko, a.imie))
+    # === POST-PROCESSING 2: pozostali (jeszcze nieużyci) pracownicy APT wypełniają resztę ===
+    # Każdy pracownik APT może zostać przydzielony dokładnie raz w całym dniu — śledzone
+    # globalnie po wszystkich bucketach (1/2/3/4), nie tylko w obrębie tego przebiegu.
+    apt_globally_used: set[int] = {
+        int(w['pk'])
+        for zk in ('1', '2', '3', '4')
+        for akt in result.get(zk, {}).values()
+        for w in akt.get('pracownicy', [])
+        if w.get('apt')
+    }
 
     for zmiana_str in ['1', '2', '3']:
         if zmiana_str not in result:
             continue
-        acts_apt: list = []
+        residual_spec = []
         for akt_key, akt_data in result[zmiana_str].items():
             if akt_key == '__fillers__':
                 continue
-            current = len(akt_data['pracownicy'])
-            cap = akt_data['wymagana']
-            if current < cap:
-                acts_apt.append((int(akt_key), cap - current))
-        acts_apt.sort(key=lambda x: -x[1])
+            residual = akt_data['wymagana'] - len(akt_data['pracownicy'])
+            if residual > 0:
+                residual_spec.append({'pk': int(akt_key), 'capacity': residual})
+        if not residual_spec:
+            continue
 
-        for akt_pk_a, _ in acts_apt:
+        # APT jeszcze nieużyty w ŻADNYM bucketcie (main loop 1/2/3/4 ani wcześniejszy
+        # przebieg tej samej pętli dla innej zmiany_str — apt_globally_used aktualizowane niżej)
+        pozostali_apt = [apt.pk for apt in apt_pracownicy if apt.pk not in apt_globally_used]
+        if not pozostali_apt:
+            continue
+        apt_spec = [{'key': pk} for pk in pozostali_apt]
+        apt_wynik = przydzial_flow.rozwiaz_zmiane(apt_spec, residual_spec, _koszt_apt)
+        for akt_pk_a, przydzieleni in apt_wynik.items():
+            if not przydzieleni:
+                continue
             akt_key_a = str(akt_pk_a)
-            current_ct = len(result[zmiana_str][akt_key_a]['pracownicy'])
-            cap_a = result[zmiana_str][akt_key_a]['wymagana']
+            for pk, koszt in przydzieleni:
+                result[zmiana_str][akt_key_a]['pracownicy'].append(
+                    _worker_dict(pk, apt_pk_to_p[pk], koszt, apt=True)
+                )
+                apt_globally_used.add(pk)
+            result[zmiana_str][akt_key_a]['pracownicy'].sort(
+                key=lambda w: (-w['kompetencja_uzyta'], w['nazwisko'])
+            )
 
-            for apt in apts_available:
-                if apt.pk in apt_globally_used:
-                    continue
-                if current_ct >= cap_a:
-                    break
-                result[zmiana_str][akt_key_a]['pracownicy'].append({
-                    'pk': apt.pk, 'imie': apt.imie, 'nazwisko': apt.nazwisko,
-                    'zmiana_grupa': apt.grupa,
-                    'nieobecny': False,
-                    'wynik': None, 'zapychacz': False, 'apt': True,
-                })
-                apt_globally_used.add(apt.pk)
-                current_ct += 1
-
-    # Workers with no dept/competency match in any shift + absent no-zmiana → "Bez zmiany"
+    # Pracownicy "bez zmiany" bez żadnego dopasowania + nieobecni bez zmiany → sekcja "0"
     bez_zmiany_remaining = [
         p for p in bez_zmiany_prac
         if p.pk in unassigned_bz_pks or p.pk in nieobecni_pks
@@ -1175,6 +1068,11 @@ def _wykonaj_przydzial(plan: PlanDzienny) -> dict:
                 'godziny': {},
             }
         }
+
+    # Ostrzeżenia z crosswalku (P2, strefa niepewności 0.70-0.85) — jeśli żadne nie
+    # wystąpiło, nie zaśmiecamy JSON-a pustą listą pod niepotrzebnym kluczem
+    if ostrzezenia_dzialow:
+        result['__ostrzezenia_dzialow__'] = ostrzezenia_dzialow
 
     return result
 

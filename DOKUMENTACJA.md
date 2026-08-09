@@ -31,25 +31,50 @@ System Magazynowy to aplikacja webowa zbudowana w Django 5.2, przeznaczona do za
 4. **Przydział pracowników** — kliknij „Przydziel" na planie; algorytm przydziela pracowników do aktywności według zmian, kompetencji i priorytetu (etatowi przed APT)
 5. **Wyniki przydziału** — tabela z zakładkami zmian (I/II/III/D), tabelami godzinowymi (Plan/Fakt), listą pracowników z kolorowym badge'em grupy zmiany, wskaźnikiem nieobecności oraz sekcją nieprzypisanych z wyjaśnieniem przyczyn
 
-Dostęp do wszystkich widoków wymaga zalogowania. Parser nie korzysta z AI — wszystkie kolumny rozpoznawane są deterministycznie.
+Dostęp do wszystkich widoków wymaga zalogowania. Parser nie korzysta z AI — wszystkie kolumny rozpoznawane są deterministycznie, czyli że parser rozpoznaje kolumny na podstawie stałych, z góry zaprogramowanych reguł — a nie "zgadywania". W praktyce oznacza to, że dla tych samych danych wejściowych parser zawsze da dokładnie ten sam wynik. Typowe mechanizmy takiego rozpoznawania kolumn:
+
+dopasowanie nazw nagłówków do listy znanych wzorców (np. "Imię i nazwisko", "Nr pracownika", "Zmiana" — z uwzględnieniem wariantów pisowni)
+dopasowanie po pozycji/kolejności kolumn
+dopasowanie po typie danych (np. kolumna z samymi datami, kolumna z liczbami w określonym zakresie)
+reguły regex / warunki if-else
 
 ---
 
 ## 2. Stos technologiczny
 
-| Warstwa | Technologia |
-|---|---|
-| Backend | Django 5.2, Python 3.13 |
-| Baza danych | SQLite (dev), PostgreSQL (prod) |
-| Frontend | Bootstrap 5.3, Bootstrap Icons 1.11, Vanilla JS |
-| Excel (odczyt) | openpyxl 3.1.5 |
-| PDF | reportlab — czcionka Arial z `C:/Windows/Fonts` |
-| Szyfrowanie pól | django-encrypted-model-fields 0.6.5 + cryptography |
-| Zmienne środowiskowe | django-environ 0.11.2 |
-| Serwowanie plików statycznych | WhiteNoise 6.8.2 |
-| Rate limiting logowania | django-axes 8.3.1 |
+Backend: Django 5.2, Python 3.13
+
+
+Baza danych: SQLite (dev) → PostgreSQL (prod)
+
+
+Frontend: Bootstrap 5.3 + Bootstrap Icons 1.11
+          Vanilla JS (bez frameworka)
+
+Obsługa plików: Excel (odczyt): openpyxl 3.1.5
+                PDF: reportlab, czcionka Arial z C:/Windows/Fonts
+
+Bezpieczeństwo i konfiguracja
+
+Szyfrowanie pól: django-encrypted-model-fields 0.6.5 + cryptography
+Zmienne środowiskowe: django-environ 0.11.2
+Rate limiting logowania: django-axes 8.3.1
+
+Infrastruktura
+
+Serwowanie plików statycznych: WhiteNoise 6.8.2
+
+Logika biznesowa
+
+Optymalizacja przydziału: networkx 3.4.2 (min-cost flow — szczegóły w sekcji 6)4 |
 
 > **Uwaga:** OpenAI API zostało usunięte w wersji 2.0 (2026-07-04). Pakiety `openai` i `httpx` usunięte z `requirements.txt` w v2.4.
+>
+> **Uwaga:** projekt ma dwa środowiska wirtualne — `magazyn\.venv` oraz współdzielone
+> `myvenv` katalog wyżej (`My_Django_Projects\myvenv`). Przed instalacją nowej zależności
+> upewnij się, którego środowiska faktycznie używa uruchomiony serwer/IDE — `pip install`
+> w niewłaściwym venvie kończy się sukcesem po cichu, a serwer i tak nie znajdzie pakietu
+> przy starcie (`ModuleNotFoundError`).
 
 ---
 
@@ -462,7 +487,93 @@ Przycisk „Zwiń" zwija sidebar do ikon (56 px); stan w `localStorage`.
 
 ## 6. Algorytm przydziału pracowników
 
-Funkcja `_wykonaj_przydzial(plan: PlanDzienny) -> dict` w `apps/pracownicy/views.py`.
+Funkcja `_wykonaj_przydzial(plan: PlanDzienny) -> dict` w `apps/pracownicy/views.py` — od
+2026-08-03 jest to **orchestrator**, nie sam algorytm. Właściwy silnik (przepływ o
+minimalnym koszcie, NetworkX) znajduje się w `apps/pracownicy/przydzial_flow.py`. Poprzednia
+wersja (zachłanny algorytm fazowy: tier1/tier2/force-assign) została w całości zastąpiona —
+opis poniżej odzwierciedla nowy silnik. Testy jednostkowe i integracyjne: `apps/pracownicy/tests.py`.
+
+### 6.0 Przegląd end-to-end: jak system dopasowuje pracownika do aktywności
+
+Dwa niezależne źródła danych muszą zostać ze sobą zsynchronizowane, zanim jakiekolwiek
+dopasowanie się odbędzie:
+
+1. **`/pracownicy/`** — lista pracowników, każdy z polem `Pracownik.dzial` (dział, do którego
+   przypisany jest w danych kadrowych) oraz `zmiana`/`zmiana_grupa` (przypisana zmiana).
+2. **`/pracownicy/plany/<id_planu>/`** — plan zmianowy zaimportowany z Excela: dla każdej
+   `Aktywnosc` (nazwa + `dzial` — to jest odpowiednik "nagłówka kolumny" z arkusza planu),
+   godzinowe zapotrzebowanie (`ZapotrzebowanieGodzinowe`) per zmiana (1/2/3).
+
+Nazewnictwo działów w tych dwóch źródłach **nie musi być identyczne** (literówki, skróty,
+różna wielkość liter) — stąd potrzeba fuzzy-matchingu opisanego w sekcji 6.4. Przebieg
+pełnego przydziału, krok po kroku:
+
+```
+┌─────────────────────┐        ┌──────────────────────────────┐
+│  Pracownik.dzial     │        │  Aktywnosc.dzial              │
+│  (/pracownicy/)      │        │  (/pracownicy/plany/<id>/)    │
+└──────────┬───────────┘        └───────────────┬───────────────┘
+           │                                     │
+           └───────────────┬─────────────────────┘
+                            ▼
+              buduj_crosswalk_dzialow()            (raz na cały przebieg,
+              fuzzy match: substring → difflib          patrz 6.4)
+              próg 0.85, strefa niepewności 0.70-0.85 → log ostrzeżenia
+                            │
+                            ▼
+        dla każdego "bucketu" zmiany (1, 2, 3, D, bez-zmiany, leftover-APT):
+                            │
+              ┌─────────────┴──────────────┐
+              ▼                             ▼
+     P1: pasuje_zmiana()          shift_acts: (akt_pk, capacity=
+     — filtruje WĘZŁY,              ceil(max godzinowego
+     nie krawędzie o wysokim         zapotrzebowania), godziny)
+     koszcie (6.3)
+              │                             │
+              └─────────────┬───────────────┘
+                            ▼
+              buduj_graf_zmiany() / rozwiaz_zmiane()
+              graf: źródło → pracownik (cap=1) → aktywność (cap=wymagana) → ujście
+              koszt krawędzi = koszt_dopasowania() → P2 (dział) + P3 (kompetencja)  (6.4)
+                            │
+                            ▼
+              networkx.max_flow_min_cost(graf, źródło, ujście)
+              1. maksymalizuj LICZBĘ przydzieleń
+              2. dopiero wśród maksimów — minimalizuj SUMĘ kosztów
+                            │
+                            ▼
+              dekoduj przepływ → dla każdej pary (pracownik, aktywność)
+              z przepływem ≥ 1: zapisz {pk, wynik, dzial_ok, fuzzy_score,
+              kompetencja_uzyta, apt: False}
+                            │
+                            ▼
+              druga runda: APT na pojemności resztkowej
+              (wymagana − już_przydzieleni), ta sama koszt_dopasowania(),
+              etat ZAWSZE ma pierwszeństwo (6.4)
+                            │
+                            ▼
+              PrzydzialDzienny.dane[str(zmiana)][str(akt_pk)] = {...}
+```
+
+**Konkretny przykład liczbowy** (ilustracja modelu kosztów, nie prawdziwe dane):
+
+Aktywność „Kompletacja Retail" (dział `Outbound`, zmiana A, `wymagana = 1`). Trzech
+kandydatów przeszło już P1 (wszyscy mają zmianę A):
+
+| Pracownik | `dzial` | dopasowanie do `Outbound` | ocena kompetencji | koszt krawędzi |
+|---|---|---|---|---|
+| Jan | `Outbound` | substring, `dzial_ok=True` | 45/50 → 9/10 | `10 − 9 = 1` |
+| Anna | `Wysyłka` | fuzzy 0.91 ≥ 0.85, `dzial_ok=True` | 20/50 → 4/10 | `10 − 4 = 6` |
+| Piotr | `Inbound` | brak dopasowania, `dzial_ok=False` | 50/50 → 10/10 | `10000 + (10 − 10) = 10000` |
+
+Mimo że Piotr ma **najwyższą** kompetencję, jego koszt jest o cztery rzędy wielkości wyższy
+niż u Jana czy Anny — `max_flow_min_cost` wybierze Jana (koszt 1, najniższy). Piotr zostałby
+przydzielony **wyłącznie** gdyby Jan i Anna w ogóle nie istnieli jako kandydaci (P1 wykluczyłby
+ich albo capacity zostałaby wyczerpana) — wtedy i tylko wtedy przepływ o maksymalnej liczbie
+przydzieleń wymusi użycie Piotra, płacąc karę 10000 (dopasowanie awaryjne, `dzial_ok=False`
+widoczne w wyniku do celów audytu).
+
+Pełny, sformalizowany opis każdego kroku — w sekcjach 6.1–6.8 poniżej.
 
 ### 6.1 Dane wejściowe
 
@@ -504,28 +615,68 @@ Szczyt zapotrzebowania godzinowego zaokrąglony w górę.
 | III | C | 22–23, 0–5 | Standardowa |
 | D | D | Zmienne | PRASA/KDR (specjalna) |
 
-Pracownik trafia do zmiany gdy jego `zmiana_grupa` zaczyna się na odpowiednią literę (A/B/C/D). Pracownicy bez `zmiana_grupa` przydzielani są do pierwszej standardowej zmiany, w której jeszcze nie figurują (`globally_assigned_prac` — deduplication).
+Pracownik trafia do zmiany gdy `pasuje_zmiana(pracownik, litera)` zwraca `True` (dokładne
+dopasowanie pola `zmiana`, albo `zmiana_grupa` zaczynająca się od tej litery). Pracownicy bez
+`zmiana` I bez `zmiana_grupa` ("bez zmiany") są **świadomie zwolnieni** z tego wymogu (patrz
+6.4) — wypełniają resztkową pojemność zmian I–III w osobnym przebiegu po głównych zmianach,
+zamiast rezerwować sobie "pierwszą zmianę, w której jeszcze nie figurują" jak w starej wersji.
 
-**Obsługa absencji:** pracownicy z `pk ∈ nieobecni_pks` są **wykluczeni** z pul `unassigned_priority` i `unassigned_others`. Trafiają bezpośrednio do sekcji fillers z flagą `nieobecny=True` (raz na plan — `globally_absent_shown` zapobiega duplikatom między zmianami).
+**Obsługa absencji:** pracownicy z `pk ∈ nieobecni_pks` są **wykluczeni** — nie wchodzą jako
+węzły do grafu przepływu tej zmiany. Trafiają bezpośrednio do sekcji fillers z flagą
+`nieobecny=True` (raz na plan — `globally_absent_shown` zapobiega duplikatom między zmianami).
 
-### 6.4 Priorytety przydziału — zasada etatowi przed APT
+### 6.4 Hierarchia priorytetów P1/P2/P3 — min-cost flow (NetworkX)
 
-**Absolutna zasada:** wszyscy etatowi pracownicy muszą zostać rozpatrzeni we wszystkich aktywnościach zanim jakikolwiek pracownik APT dostanie przydział.
+Silnik: `apps/pracownicy/przydzial_flow.py`. Kolejność priorytetów jest **leksykograficzna** —
+wyższy priorytet całkowicie dominuje nad niższym, to nie jest suma ważona kilku kryteriów.
 
-**Faza 1 — pre-rezerwacja wg macierzy procesowej (tylko etatowi):**
-Każdy etatowy pracownik z niezerowym `worker_group_score` jest kierowany do aktywności, gdzie ma najwyższy wynik. Pracownicy z najwyższymi wynikami obsługiwani pierwsi (greedy, sort desc).
+**P1 — zgodność zmiany, warunek bezwzględny (`pasuje_zmiana`):**
+Decyduje, czy krawędź pracownik→aktywność w ogóle istnieje w grafie przepływu dla danego
+"bucketu" zmiany. Brak zgodności = brak krawędzi, nigdy wysoki koszt — dzięki temu pracownik
+z niepasującą zmianą nie może zostać przydzielony nawet jako ostateczność, gdyby był jedynym
+kandydatem.
 
-**Faza 2 — uzupełnienie standardowe (tylko etatowi):**
-Dla każdej aktywności: kandydaci z `unassigned_priority | unassigned_others` spełniający co najmniej jedno kryterium dopasowania, sortowani wg `worker_group_score` desc → priorytet działu → nazwisko. APT nie uczestniczy w tej fazie.
+**P2 — zgodność działu, miękka ale dominująca (`koszt_dopasowania` + `dzialy_fuzzy_match`):**
+Fuzzy dopasowanie `Pracownik.dzial` do `Aktywnosc.dzial` przez `difflib.SequenceMatcher`
+(próg akceptacji 0.85; wynik w [0.70, 0.85) logowany jako ostrzeżenie do ręcznej weryfikacji,
+nie akceptowany ani odrzucany po cichu) **LUB** dotychczasowe dopasowanie kodu departamentu
+przez słowa kluczowe (`_dept_matches_akt`, patrz niżej — zachowane, żeby nie zepsuć
+istniejących przydziałów pracowników priorytetowych). Niezgodność dodaje do kosztu krawędzi
+`PRZYDZIAL_PENALTY_DZIAL` (domyślnie 10 000) — na tyle dużo, że żadna kombinacja ocen
+kompetencji (P3, zakres 0–`PRZYDZIAL_KOSZT_MAX_KOMPETENCJI`, domyślnie 10) nie może tego
+przebić.
 
-**Faza 3 — APT wypełnia pozostałą pojemność:**
-Dopiero po zakończeniu Faz 1 i 2 dla **wszystkich** aktywności, pracownicy APT (`unassigned_apt`) wypełniają wolne miejsca. Sortowani wg `comp_apt[(apt_pk, akt_pk)]` desc.
+**P3 — ocena kompetencji:**
+Różnicuje wyłącznie pomiędzy pracownikami, którzy już przeszli P1 i mają ten sam status P2.
+Koszt = `KOSZT_MAX_KOMPETENCJI - ocena_znormalizowana`. Brak wpisu kompetencji nie wywala
+wyjątku — liczony jako najniższa ocena (0) plus mała dodatkowa kara
+`PRZYDZIAL_BRAK_KOMPETENCJI_PENALTY` (domyślnie 1), wciąż dużo mniejsza niż `PENALTY_DZIAL`.
 
-**Force-assign:** etatowi pracownicy priorytetowi, którym nie przydzielono żadnej aktywności po Fazie 2, są umieszczani w pierwszej pasującej aktywności (ignorując pojemność). APT nie podlega force-assign.
+**Rozwiązanie:** `rozwiaz_zmiane()` buduje graf (źródło → pracownicy, pojemność 1 każdy →
+aktywności, pojemność = `wymagana` → ujście) i woła `networkx.max_flow_min_cost`, który
+**najpierw maksymalizuje liczbę przydzieleń**, a dopiero wśród rozwiązań maksymalnych
+minimalizuje koszt. To zastępuje dawny osobny "force-assign": pracownik priorytetowy bez
+dopasowania działu i tak dostanie przydział (płacąc karę P2), jeśli to jedyny sposób
+wypełnienia wolnego miejsca — bez dodatkowego przebiegu w kodzie.
 
-### 6.5 Kryteria dopasowania pracownika do aktywności (`_pasuje_do_aktywnosci`)
+**Etatowi zawsze przed APT — decyzja świadoma, nie ograniczenie modelu:** każdy "bucket"
+zmiany rozwiązywany jest jako **dwa kolejne** przepływy: najpierw etatowi, potem APT na
+pozostałej (resztkowej) pojemności (`wymagana - już_przydzieleni`). Dobrze dopasowany
+pracownik APT nigdy nie wyprze słabiej dopasowanego etatowego — potwierdzone z użytkownikiem
+jako świadomy wybór, alternatywą było jedno wspólne rozwiązanie z etatowymi i APT
+konkurującymi na równych zasadach.
 
-Pracownik pasuje jeśli spełniony **co najmniej jeden** warunek:
+**Pola audytowe** (nowe, na każdym realnym przydziale): `dzial_ok` (bool), `fuzzy_score`
+(float), `kompetencja_uzyta` (float użyta do kosztu) — pozwalają odróżnić "dopasowanie
+idealne" od "dopasowania awaryjnego" (zmiana OK, dział niezgodny, użyty tylko bo brakowało
+innych kandydatów). Nie są jeszcze wyświetlane w `wyniki_przydzialu.html` — szablon czyta
+tylko nazwane atrybuty, więc nowe pola są bezpieczne, tylko na razie nieużywane przez UI.
+
+### 6.5 Kryteria klasyfikacji fillerów (`_pasuje_do_aktywnosci`)
+
+Ta funkcja **nie decyduje już o przydziale** (to robi P1/P2/P3 wyżej) — służy wyłącznie do
+klasyfikacji powodu w sekcji fillers (`capacity` vs `no_match`, patrz 6.7). Pracownik "pasuje"
+jeśli spełniony **co najmniej jeden** warunek:
 
 | Kryterium | Sprawdzenie |
 |---|---|
@@ -533,6 +684,11 @@ Pracownik pasuje jeśli spełniony **co najmniej jeden** warunek:
 | Dział | `p.dzial` zawiera lub jest zawarty w `aktywnosc.dzial` (case-insensitive) |
 | Departament | Słowa kluczowe `_DEPT_KEYWORDS[departament]` są w `aktywnosc.dzial` |
 | Kompetencja | `aktywnosc.pk ∈ komp_map[pracownik.pk]` (wynik > 0 w KOMPETENCJE) |
+
+Ten sam departament-keyword check (`_dept_matches_akt`) jest też jedną z dwóch ścieżek P2
+opisanych w 6.4 — nie jest to duplikat przypadkowy, tylko świadome dzielenie logiki między
+"czy to jest realne dopasowanie działu" (P2, koszt) i "jak nazwać powód fillera" (6.7,
+wyłącznie kosmetyczne).
 
 **Słowa kluczowe departamentów:**
 ```python
@@ -549,7 +705,7 @@ _DEPT_KEYWORDS = {
 
 Przetwarzana osobno, po pętli zmian I–III. Obejmuje aktywności z działów PRASA i KDR, dopasowane przez grupy procesowe nr 24 (PRASA) i 56 (KDR) oraz filtr słów kluczowych `{'kdr', 'zwrot', 'prasa'}` w nazwie działu.
 
-Pracownicy z `zmiana_grupa` zaczynającą się od litery D (konfigurowalnej w `KonfiguracjaZmian.zmiana_4`). Algorytm wewnętrzny identyczny jak dla zmian I–III (Fazy 1/2/3).
+Pracownicy z `zmiana_grupa` zaczynającą się od litery D (konfigurowalnej w `KonfiguracjaZmian.zmiana_4`). Silnik wewnętrzny identyczny jak dla zmian I–III — ten sam `rozwiaz_zmiane()` i hierarchia P1/P2/P3 opisana w 6.4, tylko zbiór aktywności i pracowników ograniczony do PRASA/KDR.
 
 Wyniki w `PrzydzialDzienny.dane` pod kluczem `"4"`.
 
@@ -570,6 +726,14 @@ Widok `wyniki_przydzialu` uzupełnia brakujący `sektor` z bazy przy renderowani
 
 ### 6.8 Struktura JSON `PrzydzialDzienny.dane`
 
+Klucze zewnętrzne: `"0"` (pracownicy "bez zmiany" bez żadnego dopasowania — tylko
+`__fillers__`, patrz 6.3), `"1"`/`"2"`/`"3"` (zmiany I–III), `"4"` (zmiana D, obecna tylko
+jeśli istnieje choć jeden pasujący pracownik), opcjonalnie `"__ostrzezenia_dzialow__"`
+(lista stringów — ostrzeżenia fuzzy-matchingu P2 w strefie niepewności [0.70, 0.85), patrz
+6.4). Obiekty przydzielonych pracowników mają trzy nowe pola audytowe: `dzial_ok`,
+`fuzzy_score`, `kompetencja_uzyta` (patrz 6.4) — fillerzy ich nie mają, bo nie zostali
+kosztowani jako przydzieleni.
+
 ```json
 {
   "1": {
@@ -586,7 +750,10 @@ Widok `wyniki_przydzialu` uzupełnia brakujący `sektor` z bazy przy renderowani
           "nieobecny": false,
           "wynik": 4.2,
           "zapychacz": false,
-          "apt": false
+          "apt": false,
+          "dzial_ok": true,
+          "fuzzy_score": 1.0,
+          "kompetencja_uzyta": 4.2
         }
       ],
       "godziny": {"6": 3.0, "7": 5.0, "8": 5.0, "9": 4.0}
@@ -615,7 +782,11 @@ Widok `wyniki_przydzialu` uzupełnia brakujący `sektor` z bazy przy renderowani
   },
   "2": { "...": "..." },
   "3": { "...": "..." },
-  "4": { "...": "..." }
+  "4": { "...": "..." },
+  "0": { "__fillers__": { "...": "..." } },
+  "__ostrzezenia_dzialow__": [
+    "Dział pracownika 'Dzial Kompletacji' vs dział aktywności 'kompletacja': podobieństwo 0.71 — wymaga ręcznej weryfikacji."
+  ]
 }
 ```
 
@@ -752,6 +923,9 @@ Wszystkie zmienne czytane są wyłącznie przez `django-environ` (`env(...)`). B
 | `DATABASE_URL` | Tak | URL bazy: `sqlite:///db.sqlite3` lub `postgres://user:pass@host/db` |
 | `FIELD_ENCRYPTION_KEY` | Tak | Klucz Fernet (base64) dla `django-encrypted-model-fields` |
 | `MAX_IMPORT_FILE_SIZE_MB` | Nie | Limit rozmiaru pliku importu Excel (domyślnie `10`) |
+| `PRZYDZIAL_PENALTY_DZIAL` | Nie | Kara P2 za niezgodny dział, silnik przydziału (domyślnie `10000`) |
+| `PRZYDZIAL_KOSZT_MAX_KOMPETENCJI` | Nie | Maksymalny koszt P3 wynikający z kompetencji (domyślnie `10`) |
+| `PRZYDZIAL_BRAK_KOMPETENCJI_PENALTY` | Nie | Dodatkowa kara gdy brak wpisu kompetencji (domyślnie `1`) |
 
 **Ustawienia produkcyjne** (aktywne tylko gdy `DEBUG=False`):
 
@@ -917,4 +1091,4 @@ Arkusz `PracownicyAPT01`. Kolumny 2,3,4,5,6,8,9,10,13–18 → oceny dla kolumn 
 
 ---
 
-*Dokumentacja zaktualizowana: 2026-07-29 | System Magazynowy v2.4*
+*Dokumentacja zaktualizowana: 2026-08-03 | System Magazynowy v2.5 — silnik przydziału NetworkX min-cost flow*

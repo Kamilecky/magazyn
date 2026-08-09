@@ -152,30 +152,34 @@ Każdy zaimportowany plan wyświetlany jest jako kafelek z:
 
 ### Jak działa przydział
 
-Po kliknięciu **Przydziel** system wykonuje automatyczny przydział pracowników do aktywności. Algorytm:
+Po kliknięciu **Przydziel** system wykonuje automatyczny przydział pracowników do aktywności. Od wersji z sierpnia 2026 silnik przydziału to matematyczny optymalizator (NetworkX, przepływ o minimalnym koszcie), a nie prosty algorytm krok-po-kroku — ale zasady, którymi się kieruje, są proste i mają ścisłą kolejność ważności:
 
 1. **Wczytuje dane** z bazy: plan, pracownicy, kompetencje, oceny, absencje.
 
 2. **Rozróżnia pracowników:**
-   - **Etatowi** — pracownicy stałi (departament `FF`, `IN`, `OB`, `ZW`, `PR` lub pusty). Pracownicy z `departament = APT*` są wyklucza z tej puli.
+   - **Etatowi** — pracownicy stali (departament `FF`, `IN`, `OB`, `ZW`, `PR` lub pusty). Pracownicy z `departament = APT*` są wykluczeni z tej puli.
    - **APT** — pracownicy agencyjni z osobnego importu APT (model `PracownikAPT`)
    - **Nieobecni** — pracownicy z absencją w dniu planu (tylko jeśli plan ma datę)
 
-3. **Dla każdej zmiany (I, II, III, D) wykonuje 3 fazy w tej kolejności:**
+3. **Trzy zasady w ścisłej kolejności ważności (wyższa zasada zawsze bije niższą):**
 
-   **Faza 1 — pre-rezerwacja etatowych (wg macierzy procesowej):**
-   Każdy etatowy pracownik z oceną dopasowaną do aktywności przez macierz procesową jest wstępnie kierowany do aktywności, gdzie ma najwyższą ocenę. Pracownicy z najwyższymi ocenami obsługiwani pierwsi.
+   **Zasada 1 — zmiana (A/B/C/D), warunek bezwzględny:**
+   Pracownik przypisany do zmiany A może trafić wyłącznie do aktywności zmiany A tego dnia. To nie jest "preferencja" ani "kara" — pracownik z niepasującą zmianą w ogóle nie jest brany pod uwagę dla danej aktywności, więc nigdy nie trafi do złej zmiany, nawet gdyby był jedynym kandydatem.
 
-   **Faza 2 — uzupełnienie przez etatowych:**
-   Dla każdej aktywności: spośród nieprzydzielonych etatowych wybierani są ci, którzy pasują do aktywności (stanowisko, dział, departament lub kompetencja) i sortowani wg oceny malejąco. Zapełniają wolne miejsca do pojemności aktywności.
+   **Zasada 2 — zgodność działu:**
+   Spośród pracowników z pasującą zmianą, system w pierwszej kolejności wybiera tych, których dział pasuje do działu/nagłówka danej aktywności (dopuszczalne drobne różnice nazewnictwa — literówki, skróty, wielkość liter). Pracownik z niepasującym działem może zostać przydzielony **tylko jako rozwiązanie awaryjne**, gdy brakuje jakiegokolwiek kandydata z właściwego działu na dane miejsce.
 
-   **Faza 3 — APT wypełnia pozostałe miejsca:**
-   Dopiero po zakończeniu Faz 1 i 2 dla **wszystkich** aktywności, pracownicy APT mogą dostać przydział. APT nigdy nie zajmuje miejsca etatowemu — nawet jeśli ma wyższą ocenę.
+   **Zasada 3 — ocena kompetencji:**
+   Dopiero pomiędzy pracownikami, którzy przeszli obie powyższe zasady, o kolejności decyduje ocena z macierzy kompetencji — wyższa ocena, większy priorytet. Żadna, nawet najwyższa, ocena kompetencji nie może „przebić" niezgodności działu z Zasady 2.
+
+   **APT zawsze na końcu:** dopiero gdy wszyscy pasujący etatowi pracownicy zostali rozdysponowani na dane miejsca (wg Zasad 1–3), pracownicy APT wypełniają pozostałe wolne miejsca wg swojej oceny. APT nigdy nie zajmuje miejsca etatowemu — nawet jeśli ma wyższą ocenę.
 
 4. **Zmiana D (specjalna):**
-   Dotyczy pracowników z grupą zmiany zaczynającą się na `D`. Obejmuje aktywności z działów PRASA i KDR. Przetwarzana osobno po zmianach I–III, z identycznym algorytmem 3-fazowym.
+   Dotyczy pracowników z grupą zmiany zaczynającą się na `D`. Obejmuje aktywności z działów PRASA i KDR. Przetwarzana osobno po zmianach I–III, wg tych samych trzech zasad.
 
-5. **Nieprzydzieleni** trafiają do sekcji „bez przypisanej aktywności" z wyjaśnieniem powodu (patrz sekcja 7.3).
+5. **Pracownicy bez przypisanej zmiany** (nie mają ani `zmiana`, ani `zmiana_grupa`) są zwolnieni z Zasady 1 i mogą wypełnić wolne miejsce w dowolnej zmianie I–III — to świadomy wyjątek, nie błąd.
+
+6. **Nieprzydzieleni** trafiają do sekcji „bez przypisanej aktywności" z wyjaśnieniem powodu (patrz sekcja 7.3).
 
 ---
 
@@ -274,4 +278,4 @@ Sprawdź, czy plik jest zapisany w formacie `.xlsx` (nie `.xls` ani `.csv`) i cz
 
 ---
 
-*Instrukcja zaktualizowana: 2026-07-14 | System Magazynowy v2.3*
+*Instrukcja zaktualizowana: 2026-08-03 | System Magazynowy v2.5*
