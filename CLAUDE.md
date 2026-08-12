@@ -42,12 +42,11 @@ Django 5.2, SQLite, Bootstrap 5.3, no Celery, no AI (OpenAI removed in v2.0).
 |---|---|
 | `apps/pracownicy` | Core: workers, plans, assignment, import, macierz procesowa |
 | `apps/konta` | Auth + roles (`admin`/`hr`/`kierownik`) |
-| `apps/stanowiska` | Warehouse positions (CRUD) |
-| `apps/notatki` | Notes |
-| `apps/przydzialy` | Legacy dashboard (stub) |
-| `apps/raporty` | Excel export |
+| `apps/stanowiska` | Warehouse positions (CRUD, wired at `/stanowiska/`, `dodaj`/`edytuj`/`usun` gated `@wymaga_roli('admin')`) |
+| `apps/notatki` | Shared notes panel (any logged-in user can delete any note — appears intentional, not an authz gap: the UI shows a delete button on every note to every user uniformly) |
+| `apps/przydzialy` | Dashboard stub — obsada always shows 0, old `PlanZmiany`-based system disabled |
 
-`apps/rekruci` and `apps/scoring` are legacy — preserved in DB, URLs not wired.
+**Removed 2026-08-03** (dead code cleanup): `apps/rekruci` (Rekrut/AnkietaFizyczna/OrzeczenieLekarski — recruitment models, zero rows in DB, URLs never wired), `apps/scoring` (ScoringEngine, existed only to score `Rekrut` candidates), `apps/raporty` (its only view, `obsada_excel`, imported the models above and — since nothing populated them — always produced an effectively empty report). `Przydzia`/`AuditLog` (in `apps/przydzialy`) were deleted too since both existed only to record that dead Rekrut→Stanowisko assignment flow. `django-encrypted-model-fields`/`cryptography`/`FIELD_ENCRYPTION_KEY` also removed — they existed solely for `Rekrut`'s encrypted fields. See `apps/przydzialy/migrations/` history (rebuilt from scratch after this removal) if you need to trace it.
 
 ## Core data flow
 
@@ -165,7 +164,6 @@ JSON blobs from context: `MODAL_DATA`, `WORKER_DATA`, `DZIAL_DATA` (rendered via
 ## Windows-specific
 
 - **File paths in tools**: always use forward slashes (`C:/path/file`) — backslash paths silently fail.
-- PDF generation reads `C:/Windows/Fonts/arial.ttf`.
 - `mkdir -p` does not exist; use `python -c "import os; os.makedirs(..., exist_ok=True)"`.
 - Venv: `.venv\Scripts\Activate.ps1` (PowerShell) or `.venv\Scripts\activate.bat` (cmd).
 

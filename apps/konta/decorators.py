@@ -1,13 +1,14 @@
 from functools import wraps
 from django.shortcuts import render, redirect
 from django.contrib import messages
+from .models import Profil
 
 
 # Odczyt roli z powiązanego profilu; None gdy profil nie istnieje (nowo utworzone konto)
 def _get_rola(user):
     try:
         return user.profil.rola
-    except Exception:
+    except Profil.DoesNotExist:
         return None
 
 

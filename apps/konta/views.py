@@ -1,5 +1,6 @@
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
+from .models import Profil
 
 
 # Przekierowanie po zalogowaniu — zależne od roli użytkownika
@@ -8,7 +9,7 @@ def dashboard(request):
     # Odczytaj rolę z profilu; try/except zabezpiecza gdy profil nie istnieje
     try:
         rola = request.user.profil.rola
-    except Exception:
+    except Profil.DoesNotExist:
         rola = None
 
     # Admin trafia do panelu administracyjnego Django (/admin/)

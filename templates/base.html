@@ -185,22 +185,19 @@
     </div>
 
 
+    <!-- Stanowiska -->
+    <div class="sidebar-section">
+      <div class="sidebar-section-label">Stanowiska</div>
+      <a class="sidebar-link" href="{% url 'stanowiska:lista' %}" data-path="/stanowiska/" data-label="Lista stanowisk">
+        <i class="bi bi-diagram-3-fill"></i><span>Lista stanowisk</span>
+      </a>
+    </div>
+
     <!-- Przydziały -->
     <div class="sidebar-section">
       <div class="sidebar-section-label">Przydziały</div>
       <a class="sidebar-link" href="{% url 'przydzialy:dashboard' %}" data-path="/przydzialy/" data-label="Dashboard obsady">
         <i class="bi bi-speedometer2"></i><span>Dashboard obsady</span>
-      </a>
-      <a class="sidebar-link" href="{% url 'przydzialy:historia' %}" data-path="/przydzialy/historia/" data-label="Historia przydziałów">
-        <i class="bi bi-clock-history"></i><span>Historia przydziałów</span>
-      </a>
-    </div>
-
-    <!-- Raporty -->
-    <div class="sidebar-section">
-      <div class="sidebar-section-label">Raporty</div>
-      <a class="sidebar-link" href="{% url 'raporty:obsada_excel' %}" data-path="/raporty/obsada/" data-label="Raport obsady (Excel)">
-        <i class="bi bi-file-earmark-excel-fill text-success"></i><span>Raport obsady (Excel)</span>
       </a>
     </div>
 
@@ -503,7 +500,7 @@
         <h6 class="mb-1">Panel administracyjny</h6>
         <ul class="mb-0 small text-muted ps-3">
           <li>Link w sidebarze widoczny wyłącznie dla roli <strong>admin</strong></li>
-          <li>Domyślna ścieżka <code>/admin/</code> aktywna (zmiana możliwa przez <code>ADMIN_URL</code> w <code>.env</code>)</li>
+          <li>Panel dostępny pod stałą ścieżką <code>/admin/</code></li>
         </ul>
       </div>
     </div>

@@ -10,8 +10,7 @@
 6. [Plany dzienne i przydział](#6-plany-dzienne-i-przydział)
 7. [Wyniki przydziału](#7-wyniki-przydziału)
 8. [Stanowiska](#8-stanowiska)
-9. [Raporty](#9-raporty)
-10. [Typowe problemy](#10-typowe-problemy)
+9. [Typowe problemy](#9-typowe-problemy)
 
 ---
 
@@ -31,8 +30,7 @@ Lewy panel nawigacyjny zawiera sekcje:
 | **Plany dzienne** | Historia planów i przydział |
 | **Import danych** | Trzy okna importu Excel |
 | **Stanowiska** | Katalog stanowisk magazynowych |
-| **Przydziały** | Dashboard obsady (legacy) |
-| **Raporty** | Eksport Excel |
+| **Przydziały** | Dashboard obsady (stub) |
 
 Sidebar można zwinąć do paska ikon — kliknij strzałkę `«` u dołu panelu. Stan zapamiętywany jest w przeglądarce.
 
@@ -242,19 +240,11 @@ Pojawia się gdy dla danej zmiany są pracownicy nieprzydzieleni do żadnej akty
 
 Link: **Lista stanowisk**.
 
-Katalog stanowisk magazynowych z parametrami fizycznymi (siła dźwigania, intensywność chodzenia, praca na stojąco itp.). Możesz dodawać, edytować i usuwać stanowiska.
+Katalog stanowisk magazynowych z parametrami fizycznymi (siła dźwigania, intensywność chodzenia, praca na stojąco itp.). Podgląd listy i szczegółów dostępny dla każdej zalogowanej roli; dodawanie, edycja i usuwanie stanowisk wymaga roli **admin**.
 
 ---
 
-## 9. Raporty
-
-Link: **Raport obsady (Excel)** w sekcji „Raporty".
-
-Eksportuje raport obsady do pliku `.xlsx`.
-
----
-
-## 10. Typowe problemy
+## 9. Typowe problemy
 
 ### Brak zakładki „Zm. D" lub pusta
 
@@ -278,4 +268,4 @@ Sprawdź, czy plik jest zapisany w formacie `.xlsx` (nie `.xls` ani `.csv`) i cz
 
 ---
 
-*Instrukcja zaktualizowana: 2026-08-03 | System Magazynowy v2.5*
+*Instrukcja zaktualizowana: 2026-08-03 | System Magazynowy v2.6*

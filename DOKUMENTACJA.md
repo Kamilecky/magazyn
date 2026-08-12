@@ -52,11 +52,9 @@ Frontend: Bootstrap 5.3 + Bootstrap Icons 1.11
           Vanilla JS (bez frameworka)
 
 Obsługa plików: Excel (odczyt): openpyxl 3.1.5
-                PDF: reportlab, czcionka Arial z C:/Windows/Fonts
 
 Bezpieczeństwo i konfiguracja
 
-Szyfrowanie pól: django-encrypted-model-fields 0.6.5 + cryptography
 Zmienne środowiskowe: django-environ 0.11.2
 Rate limiting logowania: django-axes 8.3.1
 
@@ -66,9 +64,15 @@ Serwowanie plików statycznych: WhiteNoise 6.8.2
 
 Logika biznesowa
 
-Optymalizacja przydziału: networkx 3.4.2 (min-cost flow — szczegóły w sekcji 6)4 |
+Optymalizacja przydziału: networkx 3.4.2 (min-cost flow — szczegóły w sekcji 6)
 
 > **Uwaga:** OpenAI API zostało usunięte w wersji 2.0 (2026-07-04). Pakiety `openai` i `httpx` usunięte z `requirements.txt` w v2.4.
+>
+> **Uwaga:** w wersji 2.6 (2026-08-03) usunięto moduł rekrutacji (`apps.rekruci`, model `Rekrut`
+> i zależny kod — zobacz sekcję 5.3) wraz z zależnymi od niego pakietami: `django-encrypted-model-fields`,
+> `cryptography` (używane wyłącznie przez zaszyfrowane pola `Rekrut`) oraz `xhtml2pdf` (deklarowany
+> w `requirements.txt`, ale nigdzie w kodzie nieużywany — martwa zależność). `FIELD_ENCRYPTION_KEY`
+> i `OPENAI_API_KEY` usunięte z `config/settings.py` jako nieużywane.
 >
 > **Uwaga:** projekt ma dwa środowiska wirtualne — `magazyn\.venv` oraz współdzielone
 > `myvenv` katalog wyżej (`My_Django_Projects\myvenv`). Przed instalacją nowej zależności
@@ -103,11 +107,8 @@ magazyn/
 │   │   ├── views.py                  # Lista, plany, przydział, import
 │   │   ├── urls.py                   # /pracownicy/ — namespace: pracownicy
 │   │   └── urls_import.py            # /import/ — namespace: import_danych
-│   ├── rekruci/            # Legacy (zachowany w bazie, URL niedostępny)
-│   ├── stanowiska/         # Stanowiska magazynowe
-│   ├── przydzialy/         # Dashboard obsady (legacy)
-│   ├── scoring/            # Legacy: silnik scoringu AI
-│   └── raporty/            # Eksport Excel
+│   ├── stanowiska/         # Stanowiska magazynowe (CRUD, dodaj/edytuj/usun tylko admin)
+│   └── przydzialy/         # Dashboard obsady (stub — obsada zawsze 0)
 ├── config/
 │   ├── settings.py
 │   ├── urls.py
@@ -120,11 +121,9 @@ magazyn/
 │   │   ├── wyniki_przydzialu.html    # Wyniki przydziału pracowników do planu
 │   │   ├── import_plan_zmianowy.html
 │   │   ├── import_pracownicy.html
-│   │   ├── import_pracownicy_apt.html
-│   │   └── plan_pdf.html
+│   │   └── import_pracownicy_apt.html
 │   ├── stanowiska/
 │   ├── przydzialy/
-│   ├── raporty/
 │   └── konta/
 │       ├── brak_dostepu.html         # Strona 403
 │       └── zablokowany.html          # Strona blokady axes (429)
@@ -459,13 +458,24 @@ Sekcja mapowania kolumn (`action='save_mapping'`) + dwuetapowy import. Po zatwie
 
 ### 5.3 Pozostałe moduły
 
-**`stanowiska`** — CRUD stanowisk magazynowych z parametrami fizycznymi. Pasy obsady stub (0).
+**`stanowiska`** — CRUD stanowisk magazynowych z parametrami fizycznymi. Pasy obsady stub (0)
+— `_pracownicy_ze_stanowiska()` zawsze zwraca `[]` (stary system `PlanZmiany` usunięty, nowy
+system przydziału z `apps.pracownicy` nie jest jeszcze podpięty pod tę funkcję). `dodaj`/`edytuj`/`usun`
+wymagają roli `admin` (`@wymaga_roli('admin')`); `lista`/`podglad` dostępne dla każdej zalogowanej roli.
 
-**`przydzialy`** — legacy dashboard i historia przydziałów z modelu `Przydzia`.
-
-**`raporty`** — raport obsady w formacie Excel (`/raporty/obsada/excel/`).
+**`przydzialy`** — dashboard stub (obsada zawsze 0, ten sam powód co wyżej).
 
 **`konta`** — logowanie; `admin` → `/admin/`, inne role → `/pracownicy/`.
+
+**Usunięte 2026-08-03** (dług technologiczny — martwy kod zależny od modelu `Rekrut`, zerowa
+liczba rekordów w bazie, funkcje nigdzie nieosiągalne przez UI poza jednym eksportem Excel,
+który i tak zawsze renderował pusty raport): `apps.rekruci` (rekrutacja — `Rekrut`,
+`AnkietaFizyczna`, `OrzeczenieLekarski`), `apps.scoring` (`ScoringEngine` — punktował wyłącznie
+`Rekrut` względem `Stanowisko`), `apps.raporty` (jedyny widok, `obsada_excel`, importował
+wszystkie trzy powyższe). Model `Przydzia` i `AuditLog` w `apps.przydzialy` usunięte razem
+z nimi — istniały wyłącznie po to, żeby zapisywać wynik tego samego martwego procesu
+rekrutacyjnego. Widok `przydzialy:historia` (renderował listę `Przydzia`) usunięty wraz
+z modelem.
 
 ---
 
@@ -477,8 +487,7 @@ Sekcja mapowania kolumn (`action='save_mapping'`) + dwuetapowy import. Po zatwie
 | **Plany dzienne** | Plany dzienne |
 | **Import danych** | Import planu zmianowego, Import pracowników, Import pracowników APT |
 | **Stanowiska** | Lista stanowisk |
-| **Przydziały** | Dashboard obsady, Historia przydziałów |
-| **Raporty** | Raport obsady (Excel) |
+| **Przydziały** | Dashboard obsady |
 | **Administracja** | Panel admina (tylko rola `admin`) |
 
 Przycisk „Zwiń" zwija sidebar do ikon (56 px); stan w `localStorage`.
@@ -894,14 +903,11 @@ Widok przekazuje surowe struktury Pythona (`modal_data`, `worker_data`, `dzial_d
 
 /stanowiska/                                    → lista stanowisk               [login]
 /stanowiska/<pk>/                               → podgląd stanowiska            [login]
-/stanowiska/dodaj/                              → dodaj stanowisko              [login]
-/stanowiska/<pk>/edytuj/                        → edytuj stanowisko             [login]
-/stanowiska/<pk>/usun/                          → usuń stanowisko (POST)        [login]
+/stanowiska/dodaj/                              → dodaj stanowisko              [admin]
+/stanowiska/<pk>/edytuj/                        → edytuj stanowisko             [admin]
+/stanowiska/<pk>/usun/                          → usuń stanowisko (POST)        [admin]
 
-/przydzialy/                                    → dashboard obsady (legacy)     [login]
-/przydzialy/historia/                           → historia przydziałów (legacy) [login]
-
-/raporty/obsada/excel/                          → raport Excel                  [login]
+/przydzialy/                                    → dashboard obsady (stub)       [login]
 ```
 
 Legenda: `[login]` = wymaga zalogowania, `[admin]` = wymaga roli `admin` (403 dla innych ról).
@@ -921,7 +927,6 @@ Wszystkie zmienne czytane są wyłącznie przez `django-environ` (`env(...)`). B
 | `DEBUG` | Tak | `True` (dev) / `False` (prod) |
 | `ALLOWED_HOSTS` | Tak | Lista hostów oddzielona przecinkami |
 | `DATABASE_URL` | Tak | URL bazy: `sqlite:///db.sqlite3` lub `postgres://user:pass@host/db` |
-| `FIELD_ENCRYPTION_KEY` | Tak | Klucz Fernet (base64) dla `django-encrypted-model-fields` |
 | `MAX_IMPORT_FILE_SIZE_MB` | Nie | Limit rozmiaru pliku importu Excel (domyślnie `10`) |
 | `PRZYDZIAL_PENALTY_DZIAL` | Nie | Kara P2 za niezgodny dział, silnik przydziału (domyślnie `10000`) |
 | `PRZYDZIAL_KOSZT_MAX_KOMPETENCJI` | Nie | Maksymalny koszt P3 wynikający z kompetencji (domyślnie `10`) |
@@ -958,9 +963,13 @@ X_FRAME_OPTIONS = 'DENY'
 | `@tylko_kierownik` | `kierownik`, `admin` |
 | `@hr_lub_kierownik` | wszystkie trzy role |
 
+> `@tylko_hr`, `@tylko_kierownik`, `@hr_lub_kierownik` są zdefiniowane, ale obecnie **nie są
+> użyte w żadnym widoku** — jedynym aktywnie stosowanym decoratorem jest `@wymaga_roli(...)`.
+
 **Zachowanie:** niezalogowany → redirect na `/konta/login/`; zalogowany z złą rolą → HTTP 403 (strona `konta/brak_dostepu.html`), nie redirect.
 
-**Widoki wymagające roli `admin`:** `usun_pracownika`, `usun_wszystkich`, `usun_plan`.
+**Widoki wymagające roli `admin`:** `usun_pracownika`, `usun_wszystkich`, `usun_plan` (pracownicy);
+`dodaj`, `edytuj`, `usun` (stanowiska).
 
 Testy kontroli dostępu: `apps/konta/tests.py` — 10 przypadków pokrywających admin/hr/kierownik/anonimowy dla każdego z trzech widoków destrukcyjnych.
 
@@ -1083,12 +1092,22 @@ Arkusz `PracownicyAPT01`. Kolumny 2,3,4,5,6,8,9,10,13–18 → oceny dla kolumn 
 
 | Kwestia | Status |
 |---|---|
-| Obsada stanowisk w `/stanowiska/` i `/przydzialy/` | Stub (0) — stary model `PlanZmiany` usunięty |
-| Raport Excel (`/raporty/obsada/excel/`) | Może wymagać aktualizacji pod nowy schemat |
+| Obsada stanowisk w `/stanowiska/` i `/przydzialy/` | Stub (0) — stary model `PlanZmiany` usunięty, nowy system przydziału (`apps.pracownicy`) jeszcze nie podpięty pod `_pracownicy_ze_stanowiska()` |
 | 3 aktywności bez grupy procesowej | `SKU do przyjęcia`, `Struktura`, `Suma do Przyjęcia` — metryki agregatowe |
 | Absencje dla planów bez `data_planu` | Nie są sprawdzane — flaga `nieobecny` zawsze `False` |
 | Zmiana D — brak danych godzinowych z pliku | Aktywności Zmiany D nie mają zapotrzebowania godzinowego w standardowym formacie planu; tabela godzinowa wyświetla się dynamicznie z dostępnych danych |
+| Panel "Notatki" — brak kontroli własności | Dowolny zalogowany użytkownik może usunąć notatkę dowolnego innego użytkownika. UI (przycisk usuń widoczny na każdej notatce, niezależnie od autora) sugeruje że to świadomy projekt "wspólnego notatnika zespołu", nie przeoczenie — ale warto potwierdzić z właścicielem produktu |
+| `@tylko_hr`, `@tylko_kierownik`, `@hr_lub_kierownik` | Zdefiniowane w `apps/konta/decorators.py`, ale nieużywane w żadnym widoku |
+
+**Usunięte w ramach porządkowania długu technologicznego (2026-08-03):** moduł rekrutacji
+(`apps.rekruci`, model `Rekrut` — zero rekordów w bazie), `apps.scoring` (silnik scoringowy
+istniejący wyłącznie dla `Rekrut`), `apps.raporty` (jedyny raport zależny od powyższych, zawsze
+pusty), modele `Przydzia`/`AuditLog`, martwe zależności `xhtml2pdf`/`django-encrypted-model-fields`/`cryptography`,
+nieużywane ustawienia `FIELD_ENCRYPTION_KEY`/`OPENAI_API_KEY`, martwy routing `/stanowiska/*`
+(teraz podłączony), fałszywy zapis o `ADMIN_URL` w panelu „Zabezpieczenia", nieosiągalny fragment
+kodu z ukrytym `NameError` w `stanowiska/views.py`, oraz kilka miejsc z nadmiernie szerokim
+`except Exception` w `apps/konta` (zawężone do `Profil.DoesNotExist`).
 
 ---
 
-*Dokumentacja zaktualizowana: 2026-08-03 | System Magazynowy v2.5 — silnik przydziału NetworkX min-cost flow*
+*Dokumentacja zaktualizowana: 2026-08-03 | System Magazynowy v2.6 — porządkowanie długu technologicznego (usunięcie modułu rekrutacji i zależnego kodu)*

@@ -17,14 +17,10 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'encrypted_model_fields',
     'axes',
     'apps.konta',
-    'apps.rekruci',
     'apps.stanowiska',
-    'apps.scoring',
     'apps.przydzialy',
-    'apps.raporty',
     'apps.pracownicy',
     'apps.notatki',
 ]
@@ -98,9 +94,6 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 LOGIN_URL = '/konta/login/'
 LOGIN_REDIRECT_URL = '/konta/dashboard/'
 LOGOUT_REDIRECT_URL = '/konta/login/'
-
-FIELD_ENCRYPTION_KEY = env('FIELD_ENCRYPTION_KEY')
-OPENAI_API_KEY = env('OPENAI_API_KEY', default='')
 
 MAX_IMPORT_FILE_SIZE_MB = env.int('MAX_IMPORT_FILE_SIZE_MB', default=10)
 

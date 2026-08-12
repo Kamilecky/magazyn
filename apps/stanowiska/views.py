@@ -1,9 +1,9 @@
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from apps.konta.decorators import wymaga_roli
 from .models import Stanowisko
 from .forms import StanowiskoForm
-from apps.pracownicy.models import Pracownik
 
 
 # Zwraca kolor Bootstrap dla paska obsady: danger >90%, warning 70–90%, success <70%
@@ -14,8 +14,6 @@ def _kolor(proc):
 # Dawny system dopasowania (PlanZmiany) zastąpiony nowym — brak danych przydziałów.
 def _pracownicy_ze_stanowiska(stanowisko_nazwa):
     return []
-    wyniki.sort(key=lambda r: (r['nazwisko'], r['imie']))
-    return wyniki
 
 
 # Lista wszystkich stanowisk z aktualnym poziomem obsady i kolorem paska
@@ -54,7 +52,7 @@ def podglad(request, pk):
 
 
 # Formularz dodawania nowego stanowiska; po zapisie przekierowanie na podgląd
-@login_required
+@wymaga_roli('admin')
 def dodaj(request):
     if request.method == 'POST':
         form = StanowiskoForm(request.POST)
@@ -68,7 +66,7 @@ def dodaj(request):
 
 
 # Formularz edycji istniejącego stanowiska — wstępnie wypełniony aktualnymi danymi
-@login_required
+@wymaga_roli('admin')
 def edytuj(request, pk):
     stanowisko = get_object_or_404(Stanowisko, pk=pk)
     if request.method == 'POST':
@@ -84,7 +82,7 @@ def edytuj(request, pk):
 
 
 # Usunięcie stanowiska — tylko przez POST (GET przekierowuje na edycję, nie usuwa)
-@login_required
+@wymaga_roli('admin')
 def usun(request, pk):
     stanowisko = get_object_or_404(Stanowisko, pk=pk)
     if request.method == 'POST':
